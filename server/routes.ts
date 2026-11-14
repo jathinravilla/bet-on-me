@@ -1,5 +1,6 @@
 import { generateClientTokenFromReadWriteToken } from "@vercel/blob/client";
 import { ObjectId } from "mongodb";
+import { randomInt } from "node:crypto";
 import { ESCROW_TOPUP_LAMPORTS, LAMPORTS_PER_SOL, MAX_PARTICIPANTS, MIN_STAKE_LAMPORTS, POINTS, SIGNUP_FUNDING_LAMPORTS, tierFor } from "../lib/rules";
 import type {
   CreateChallengeBody,
@@ -25,7 +26,7 @@ import {
 } from "./challenges";
 import { inviteCode, livenessWord, randomToken, safeEqual, sha256 } from "./crypto";
 import { cols, rateLimit, type ChallengeDoc, type DareProofDoc, type UserDoc } from "./db";
-import { DEMO_MODE, MAX_USERS, SOLANA_MOCK, need } from "./env";
+import { DEMO_MODE, MAX_USERS, SOLANA_MOCK, STRAVA_DEMO, need } from "./env";
 import { CHESS_USERNAME, chessPlayerExists, chessRating, stravaAuthorizeUrl, stravaExchange } from "./external";
 import { judgeDareVideo, screenDare } from "./gemini";
 import { HttpError, num, objectIdStr, oneOf, optStr, str, type Ctx, type Route } from "./http";
@@ -99,7 +100,8 @@ async function meView(userId: ObjectId): Promise<MeView> {
     points: user.points,
     wallet: { publicKey: user.wallet.publicKey, balanceLamports: bal, funded: user.fundState === "done" },
     chessUsername: user.chessUsername,
-    stravaConnected: !!user.strava,
+    stravaConnected: !!user.strava || (STRAVA_DEMO() && !!user.stravaDemo),
+    stravaDemo: STRAVA_DEMO(),
     limits: {
       maxStakeLamports: current.maxStakeLamports,
       publicDaresPerWeek: current.publicDaresPerWeek,
@@ -174,6 +176,11 @@ const RETURN_TO = /^(exp|exps|betonme):\/\/[^\s]{0,280}$/; // app deep links onl
 
 async function stravaConnect(ctx: Ctx) {
   await rateLimit(`strava:${uidOf(ctx.user)}`, 10, 60);
+  if (STRAVA_DEMO()) {
+    const { users } = await cols();
+    await users.updateOne({ _id: ctx.user._id, stravaDemo: { $exists: false } }, { $set: { stravaDemo: { runs: [] } } });
+    return { demo: true };
+  }
   const returnTo = ctx.query.get("returnTo") ?? "";
   if (!RETURN_TO.test(returnTo)) throw new HttpError(400, "Invalid return link.");
   const nonce = randomToken(24);
@@ -203,6 +210,17 @@ async function stravaCallback(ctx: Ctx) {
   } catch {
     return back(false);
   }
+}
+
+/** Demo Strava only: log one simulated GPS run (1-3 miles, chosen by the server). */
+async function stravaDemoRun(ctx: Ctx) {
+  if (!STRAVA_DEMO()) throw new HttpError(404, "Not found.");
+  await rateLimit(`demorun:${uidOf(ctx.user)}`, 12, 3600);
+  if (!ctx.user.stravaDemo) throw new HttpError(400, "Connect demo Strava on your profile first.");
+  const miles = (10 + randomInt(21)) / 10;
+  const { users } = await cols();
+  await users.updateOne({ _id: ctx.user._id }, { $push: { "stravaDemo.runs": { $each: [{ miles, at: new Date() }], $slice: -50 } } });
+  return { miles };
 }
 
 // ---------- challenges ----------
@@ -734,6 +752,7 @@ export const routes: Route[] = [
   { method: "GET", pattern: "/me", auth: true, handler: me },
   { method: "POST", pattern: "/me/chess", auth: true, handler: setChess },
   { method: "GET", pattern: "/strava/connect", auth: true, handler: stravaConnect },
+  { method: "POST", pattern: "/strava/demo-run", auth: true, handler: stravaDemoRun },
   { method: "GET", pattern: "/strava/callback", auth: false, handler: stravaCallback },
   { method: "POST", pattern: "/challenges", auth: true, handler: createChallenge },
   { method: "GET", pattern: "/challenges", auth: true, handler: listPublic },

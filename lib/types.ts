@@ -108,6 +108,7 @@ export interface MeView {
   wallet: { publicKey: string; balanceLamports: number; funded: boolean };
   chessUsername?: string;
   stravaConnected: boolean;
+  stravaDemo: boolean; // true = simulated Strava (no real Strava API app configured)
   limits: LimitsView;
   demoMode: boolean;
   chainMock: boolean;

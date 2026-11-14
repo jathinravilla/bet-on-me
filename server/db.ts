@@ -18,6 +18,7 @@ export interface UserDoc {
   points: number;
   chessUsername?: string;
   strava?: { athleteId: number; accessToken: string; refreshToken: string; expiresAt: number }; // tokens encrypted
+  stravaDemo?: { runs: { miles: number; at: Date }[] }; // demo-only stand-in for Strava (simulated GPS runs)
   stravaOauth?: { nonce: string; returnTo: string; at: Date };
   dareCreditsUsedThisWeek: number;
   weekStart: Date;

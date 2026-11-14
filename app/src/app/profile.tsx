@@ -55,7 +55,11 @@ export default function Profile() {
   const connectStrava = () =>
     run('strava', async () => {
       const returnTo = Linking.createURL('/strava-connected');
-      const { url } = await api<{ url: string }>(`/strava/connect?returnTo=${encodeURIComponent(returnTo)}`);
+      const { url, demo } = await api<{ url?: string; demo?: boolean }>(`/strava/connect?returnTo=${encodeURIComponent(returnTo)}`);
+      if (demo || !url) {
+        await refresh();
+        return setNotice('Demo Strava connected. Log simulated runs from a running challenge.');
+      }
       const result = await WebBrowser.openAuthSessionAsync(url, returnTo);
       const fresh = await refresh();
       if (fresh?.stravaConnected) setNotice('Strava connected. Your GPS runs and walks now count.');
@@ -161,12 +165,14 @@ export default function Profile() {
           <Row>
             <Icon name="run-fast" color={colors.primary} />
             <View style={styles.flex}>
-              <BodyStrong>Strava</BodyStrong>
-              <Muted>{me.stravaConnected ? "Connected. Manual activities don't count." : 'Needed for running challenges'}</Muted>
+              <BodyStrong>{me.stravaDemo ? 'Strava (demo)' : 'Strava'}</BodyStrong>
+              <Muted>{me.stravaDemo ? (me.stravaConnected ? 'Simulated connection. Runs are logged from a running challenge.' : 'Simulated for this demo — no real Strava account needed.') : me.stravaConnected ? "Connected. Manual activities don't count." : 'Needed for running challenges'}</Muted>
             </View>
             {me.stravaConnected ? <Chip text="Connected" icon="check-circle" tone="success" /> : null}
           </Row>
-          <Button small variant={me.stravaConnected ? 'secondary' : 'primary'} title={me.stravaConnected ? 'Reconnect Strava' : 'Connect Strava'} icon="link-variant" loading={busy === 'strava'} onPress={() => void connectStrava()} />
+          {me.stravaDemo && me.stravaConnected ? null : (
+            <Button small variant={me.stravaConnected ? 'secondary' : 'primary'} title={me.stravaConnected ? 'Reconnect Strava' : me.stravaDemo ? 'Connect demo Strava' : 'Connect Strava'} icon="link-variant" loading={busy === 'strava'} onPress={() => void connectStrava()} />
+          )}
         </Card>
       </View>
 

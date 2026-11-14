@@ -178,6 +178,20 @@ test("public feed, voting, and 3 reports ban + refund", async () => {
   assert.equal((await call("GET", `/challenges/${ch.id}`, users[2].token)).status, 404);
 });
 
+test("demo Strava: connect, log a run, miles show up after sync", async () => {
+  const a = await login("runner");
+  assert.equal(a.me.stravaDemo, true);
+  assert.equal(a.me.stravaConnected, false);
+  const ch = (await call<ChallengeView>("POST", "/challenges", a.token, strava())).data;
+  assert.equal((await call("POST", "/strava/demo-run", a.token)).status, 400); // not connected yet
+  assert.equal((await call<{ demo: boolean }>("GET", "/strava/connect?returnTo=betonme://x", a.token)).data.demo, true);
+  assert.equal((await me(a.token)).stravaConnected, true);
+  const run = (await call<{ miles: number }>("POST", "/strava/demo-run", a.token)).data;
+  assert.ok(run.miles >= 1 && run.miles <= 3);
+  const synced = (await call<ChallengeView>("POST", `/challenges/${ch.id}/sync`, a.token)).data;
+  assert.equal(synced.participants[0].progress, run.miles);
+});
+
 test("sign-ups are rate limited per IP", async () => {
   const statuses: number[] = [];
   for (let i = 0; i < 10; i++) {

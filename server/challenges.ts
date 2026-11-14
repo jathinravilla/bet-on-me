@@ -156,7 +156,11 @@ export async function syncChallenge(ch: ChallengeDoc, opts: { onlyUserId?: strin
           completed = completed || progress >= (ch.target ?? Infinity); // once you hit the rating, it counts
         } else progress = rating + bonus - baseline;
       } else {
-        const miles = user.strava ? await stravaMiles(user, ch.startsAt, ch.endsAt) : 0;
+        const miles = user.strava
+          ? await stravaMiles(user, ch.startsAt, ch.endsAt)
+          : (user.stravaDemo?.runs ?? []) // demo Strava: simulated runs logged inside the challenge window
+              .filter((r) => r.at >= ch.startsAt && r.at <= ch.endsAt)
+              .reduce((sum, r) => sum + r.miles, 0);
         if (miles === null) return;
         progress = round2(miles + bonus);
         if (ch.mode === "target") completed = progress >= (ch.target ?? Infinity);

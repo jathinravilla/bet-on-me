@@ -242,7 +242,9 @@ export default function ChallengeDetail() {
                   ? 'Target reached. Hold on until the clock runs out.'
                   : c.category === 'strava'
                   ? me.stravaConnected
-                    ? "Record a run or walk with the Strava app, then sync. Manual activities don't count."
+                    ? me.stravaDemo
+                      ? 'Demo Strava: log a simulated GPS run to add miles.'
+                      : "Record a run or walk with the Strava app, then sync. Manual activities don't count."
                     : 'Connect Strava so your miles count.'
                   : c.category === 'chess'
                     ? `Play ${c.chessTimeControl ?? 'rapid'} games on chess.com, then sync your rating.`
@@ -257,9 +259,21 @@ export default function ChallengeDetail() {
             </View>
           </Row>
           {c.category === 'strava' && !me.stravaConnected ? (
-            <Button title="Connect Strava" icon="link-variant" onPress={() => router.push('/profile')} />
+            <Button title={me.stravaDemo ? 'Connect demo Strava' : 'Connect Strava'} icon="link-variant" onPress={() => router.push('/profile')} />
           ) : c.category === 'dare' ? (
             !mine?.completed && !myPending ? <Button title="Record proof" icon="video" onPress={() => router.push(`/dare/${c.id}`)} /> : null
+          ) : c.category === 'strava' && me.stravaDemo ? (
+            <Button
+              title="Log a demo run"
+              icon="run-fast"
+              loading={busy === 'run'}
+              onPress={() =>
+                void act('run', async () => {
+                  await api('/strava/demo-run', { method: 'POST' });
+                  return api<ChallengeView>(`/challenges/${c.id}/sync`, { method: 'POST' });
+                })
+              }
+            />
           ) : (
             <Button title={c.category === 'strava' ? 'Sync runs' : 'Sync rating'} icon="sync" loading={busy === 'sync'} onPress={() => void act('sync', () => api<ChallengeView>(`/challenges/${c.id}/sync`, { method: 'POST' }))} />
           )}
