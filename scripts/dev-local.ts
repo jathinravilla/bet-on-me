@@ -10,7 +10,7 @@ async function main() {
   process.env.WALLET_ENCRYPTION_KEY ||= randomBytes(32).toString("hex");
   process.env.SOLANA_MOCK = "true";
   process.env.DEMO_MODE = "true";
-  const { handle } = await import("../server/app");
+  const { handle } = await import("../server/app.js");
   const port = Number(process.env.PORT || 3000);
   createServer((req, res) => {
     // Local-only: let the Expo web preview (another localhost port) call this server.

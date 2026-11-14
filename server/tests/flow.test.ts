@@ -20,7 +20,7 @@ before(async () => {
   process.env.DEMO_MODE = "true";
   process.env.CRON_SECRET = "test-cron-secret-test-cron-secret";
   delete process.env.VERCEL;
-  const { handle } = await import("../app");
+  const { handle } = await import("../app.js");
   server = createServer((req, res) => void handle(req, res));
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
@@ -28,7 +28,7 @@ before(async () => {
 
 after(async () => {
   server?.close();
-  const { cols } = await import("../db");
+  const { cols } = await import("../db.js");
   await (await cols()).db.client.close();
   await mongo?.stop();
 });
