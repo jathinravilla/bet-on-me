@@ -1,0 +1,160 @@
+import { MongoClient, type Collection, type Db, type ObjectId } from "mongodb";
+import type { Category, ChallengeStatus, ChessTimeControl, DareVerdict, Mode, ProofStatus, Visibility } from "../lib/types";
+import { need } from "./env";
+import { HttpError } from "./http";
+
+export interface WalletDoc {
+  publicKey: string;
+  encryptedSecret: string;
+}
+
+export interface UserDoc {
+  _id: ObjectId;
+  username: string;
+  createdAt: Date;
+  sessions: string[]; // sha256 of session tokens (never the tokens themselves)
+  wallet: WalletDoc;
+  fundState: "none" | "pending" | "done";
+  points: number;
+  chessUsername?: string;
+  strava?: { athleteId: number; accessToken: string; refreshToken: string; expiresAt: number }; // tokens encrypted
+  stravaOauth?: { nonce: string; returnTo: string; at: Date };
+  dareCreditsUsedThisWeek: number;
+  weekStart: Date;
+}
+
+export interface ParticipantDoc {
+  userId: string;
+  username: string;
+  joinedAt: Date;
+  stakeTxSig: string; // "pending" while the stake transfer is in flight
+  baseline?: number;
+  progress: number;
+  completed: boolean;
+  lastSyncedAt?: Date;
+  simBonus?: number; // demo-mode fake progress
+}
+
+export interface ChallengeDoc {
+  _id: ObjectId;
+  title: string;
+  description: string;
+  category: Category;
+  visibility: Visibility;
+  inviteCode: string;
+  mode: Mode;
+  target?: number;
+  chessTimeControl?: ChessTimeControl;
+  dareText?: string;
+  stakeLamports: number;
+  potLamports: number;
+  startsAt: Date;
+  endsAt: Date;
+  status: ChallengeStatus;
+  settlingAt?: Date;
+  escrow: WalletDoc;
+  creatorId: string;
+  creatorUsername: string;
+  participants: ParticipantDoc[];
+  settlement?: {
+    winners: string[];
+    payouts: { userId: string; lamports: number; txSig: string | null }[];
+    reason: string;
+    outcome: "refund" | "split" | "leader";
+    pointsApplied?: boolean;
+    finalStatus: "settled" | "banned";
+    settledAt?: Date;
+  };
+  voters: { userId: string; v: 1 | -1 }[];
+  upvotes: number;
+  downvotes: number;
+  reports: { userId: string; reason: string; at: Date }[];
+  createdAt: Date;
+}
+
+export interface DareProofDoc {
+  _id: ObjectId;
+  challengeId: string;
+  userId: string;
+  username: string;
+  livenessWord: string;
+  wordIssuedAt: Date;
+  uploadPath?: string;
+  videoUrl?: string;
+  gemini?: { verdict: DareVerdict; reason: string; checkedAt: Date };
+  voting: boolean;
+  disputeEndsAt?: Date;
+  disputes: { userId: string; at: Date }[];
+  votes: { userId: string; approve: boolean }[];
+  finalStatus: ProofStatus;
+}
+
+interface RateDoc {
+  _id: string;
+  count: number;
+  exp: Date;
+}
+interface LedgerDoc {
+  _id: string;
+  lamports: number;
+}
+
+interface Cols {
+  db: Db;
+  users: Collection<UserDoc>;
+  challenges: Collection<ChallengeDoc>;
+  proofs: Collection<DareProofDoc>;
+  rates: Collection<RateDoc>;
+  ledger: Collection<LedgerDoc>;
+}
+
+// Reuse one connection across warm serverless invocations.
+const g = globalThis as unknown as { __bom?: Promise<Cols> };
+
+export function cols(): Promise<Cols> {
+  if (!g.__bom) {
+    g.__bom = (async () => {
+      const client = new MongoClient(need("MONGODB_URI"), { maxPoolSize: 5, serverSelectionTimeoutMS: 8000 });
+      await client.connect();
+      const db = client.db(process.env.MONGODB_DB || "betonme");
+      const c: Cols = {
+        db,
+        users: db.collection("users"),
+        challenges: db.collection("challenges"),
+        proofs: db.collection("dareproofs"),
+        rates: db.collection("rates"),
+        ledger: db.collection("mockledger"),
+      };
+      await Promise.all([
+        c.users.createIndex({ username: 1 }, { unique: true }),
+        c.users.createIndex({ sessions: 1 }),
+        c.users.createIndex({ "stravaOauth.nonce": 1 }, { sparse: true }),
+        c.challenges.createIndex({ inviteCode: 1 }, { unique: true }),
+        c.challenges.createIndex({ visibility: 1, status: 1, potLamports: -1 }),
+        c.challenges.createIndex({ "participants.userId": 1 }),
+        c.challenges.createIndex({ status: 1, endsAt: 1 }),
+        c.proofs.createIndex({ challengeId: 1 }),
+        c.rates.createIndex({ exp: 1 }, { expireAfterSeconds: 0 }),
+      ]);
+      return c;
+    })().catch((e) => {
+      g.__bom = undefined;
+      throw e;
+    });
+  }
+  return g.__bom;
+}
+
+/** Fixed-window rate limit stored in Mongo (works across serverless instances). */
+export async function rateLimit(key: string, max: number, windowSec: number) {
+  const { rates } = await cols();
+  const bucket = Math.floor(Date.now() / (windowSec * 1000));
+  const doc = await rates.findOneAndUpdate(
+    { _id: `${key}:${bucket}` },
+    { $inc: { count: 1 }, $setOnInsert: { exp: new Date((bucket + 2) * windowSec * 1000) } },
+    { upsert: true, returnDocument: "after" }
+  );
+  if ((doc?.count ?? 1) > max) {
+    throw new HttpError(429, "Slow down — too many requests. Try again in a minute.");
+  }
+}
