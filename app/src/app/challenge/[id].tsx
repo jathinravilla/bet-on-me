@@ -2,18 +2,21 @@ import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, RefreshControl, Share, StyleSheet, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import { RefreshControl, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 
-import type { ChallengeView, ProofView } from '../../../../lib/types';
-import { Butterfingers, type Mood } from '@/components/Butterfingers';
-import { StatusChip } from '@/components/ChallengeCard';
-import { Banner, Body, BodyStrong, Button, Card, Chip, Display, Heading, Icon, IconButton, Label, Loading, Money, Muted, ProgressBar, Row, Screen, Title, TopBar } from '@/components/ui';
+import type { ChallengeView, FriendsView, ProofView } from '../../../../lib/types';
+import { StatusChip, onTrack } from '@/components/ChallengeCard';
+import { Avatar, AvatarStack, CategoryMark, Pop, RatingBadge, Sheet, Squish, StarInput, useConfirm, useToast } from '@/components/fx';
+import { Banner, Body, BodyStrong, Button, Card, Chip, Divider, Heading, Icon, IconButton, Loading, Muted, ProgressBar, Row, Screen, Title, TopBar } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
+import { goBack } from '@/lib/nav';
 import { useAuth } from '@/lib/auth';
-import { endingSoon, explorerAddress, explorerTx, goalLine, isRealSig, progressLabel, progressRatio, sol, timeLeft } from '@/lib/format';
+import { shareText } from '@/lib/share';
+import { endingSoon, explorerAddress, explorerTx, goalLine, isRealSig, progressLabel, progressRatio, coins, timeLeft } from '@/lib/format';
+import { connectStrava } from '@/lib/connect';
 import { useNow } from '@/lib/useNow';
-import { categoryMeta, colors, icon, radius, space } from '@/lib/theme';
+import { categoryMeta, colors, fonts, radius, space } from '@/lib/theme';
 
 const open = (url: string) => void Linking.openURL(url).catch(() => {});
 
@@ -25,8 +28,12 @@ export default function ChallengeDetail() {
   const [busy, setBusy] = useState<string | null>(null);
   const now = useNow();
   const [refreshing, setRefreshing] = useState(false);
-  const [copied, setCopied] = useState(false);
   const wasSettled = useRef(false);
+  const toast = useToast();
+  const confirm = useConfirm();
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [squad, setSquad] = useState<FriendsView['friends'] | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -79,7 +86,7 @@ export default function ChallengeDetail() {
   if (!c) {
     return (
       <Screen>
-        <TopBar onBack={() => router.back()} />
+        <TopBar onBack={() => goBack('/home')} />
         {error ? <Banner text={error} /> : <Loading label="Loading challenge" />}
       </Screen>
     );
@@ -94,17 +101,37 @@ export default function ChallengeDetail() {
   const refunded = c.settlement?.outcome === 'refund';
   const myPending = c.proofs?.find((p) => p.userId === me.id && p.finalStatus === 'pending');
 
-  let mood: Mood = 'idle';
-  if (settled && c.joined) mood = iWon || (refunded && mine?.completed) ? 'celebrate' : refunded ? 'idle' : 'fumble';
-  else if (mine?.completed) mood = 'celebrate';
-  else if (live && c.joined && endingSoon(c, now)) mood = 'nervous';
-  else if (c.status === 'settling' || (c.status === 'active' && ended)) mood = 'thinking';
+  const report = async () => {
+    const yes = await confirm({ title: 'Report this challenge?', message: 'It breaks the community guidelines. Challenges are removed and refunded after 3 reports.', confirm: 'Report it', destructive: true, icon: 'flag' });
+    if (!yes) return;
+    await act('report', async () => {
+      await api(`/challenges/${c.id}/report`, { body: { reason: 'Breaks the community guidelines' } });
+      toast('Reported. Thanks for keeping it clean.', 'info', 'flag');
+    });
+  };
 
-  const report = () =>
-    Alert.alert('Report this challenge?', 'Challenges are removed and refunded after 3 reports.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Breaks the guidelines', style: 'destructive', onPress: () => void act('report', async () => void (await api(`/challenges/${c.id}/report`, { body: { reason: 'Breaks the community guidelines' } }))) },
-    ]);
+  const openInvite = async () => {
+    setInviteOpen(true);
+    setPicked([]);
+    try {
+      setSquad((await api<FriendsView>('/friends')).friends);
+    } catch {
+      setSquad([]);
+    }
+  };
+  const sendInvites = async () => {
+    setBusy('invite');
+    try {
+      const { sent } = await api<{ sent: number }>(`/challenges/${c.id}/invite`, { body: { userIds: picked } });
+      toast(`Invited ${sent} friend${sent === 1 ? '' : 's'}`, 'success', 'account-multiple-plus');
+      setInviteOpen(false);
+    } catch (e) {
+      toast(errorMessage(e), 'danger');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const inChallenge = new Set(c.participants.map((p) => p.userId));
 
   return (
     <Screen
@@ -122,7 +149,7 @@ export default function ChallengeDetail() {
       footer={
         !c.joined && live ? (
           <Button
-            title={`Join for ${sol(c.stakeLamports)} SOL`}
+            title={`Join for ${coins(c.stakeLamports)} coins`}
             icon="hand-coin"
             loading={busy === 'join'}
             onPress={() =>
@@ -136,37 +163,61 @@ export default function ChallengeDetail() {
         ) : undefined
       }>
       <TopBar
-        title={meta.label}
-        onBack={() => router.back()}
-        right={c.visibility === 'public' && live ? <IconButton name="flag-outline" label={c.iReported ? 'Already reported' : 'Report challenge'} color={c.iReported ? colors.danger : colors.textMuted} disabled={c.iReported} onPress={report} /> : undefined}
+        onBack={() => goBack('/home')}
+        right={
+          c.visibility === 'public' && live && !c.joined ? (
+            <IconButton name="flag-outline" label={c.iReported ? 'Already reported' : 'Report challenge'} color={c.iReported ? colors.danger : colors.textMuted} disabled={c.iReported} onPress={() => void report()} />
+          ) : undefined
+        }
       />
+
+      {/* Header */}
+      <View style={{ gap: space.md }}>
+        <Row gap={space.md}>
+          <CategoryMark category={c.category} size={44} />
+          <View style={styles.flex}>
+            <Text style={styles.meta} numberOfLines={1}>
+              {meta.label} · {c.visibility === 'public' ? 'Public' : 'Friends'} · {c.mode === 'open' ? 'Most progress wins' : 'Hit the target'}
+            </Text>
+            <Squish accessibilityLabel={`Created by ${c.creatorUsername}. Open profile`} onPress={() => router.push(`/u/${c.creatorUsername}`)} style={styles.creator}>
+              <Text style={styles.metaLink}>by @{c.creatorUsername}</Text>
+            </Squish>
+          </View>
+          <StatusChip c={c} now={now} />
+        </Row>
+        <Title accessibilityRole="header">{c.title}</Title>
+        <Body color={colors.textMuted}>{c.description ? c.description : goalLine(c)}</Body>
+        {c.description && c.category !== 'dare' ? <Muted>Verified by {c.category === 'chess' ? 'chess.com' : 'Strava'} · {goalLine(c)}</Muted> : null}
+      </View>
 
       {/* Results */}
       {c.settlement && c.status !== 'active' ? (
-        <Animated.View entering={FadeInDown.duration(400)}>
-          <Card tone={c.status === 'banned' ? 'danger' : iWon || refunded ? 'success' : c.joined ? 'danger' : undefined} style={{ alignItems: 'center' }}>
-            <Butterfingers mood={c.status === 'banned' ? 'fumble' : mood} size={170} />
-            <Display center>{c.status === 'banned' ? 'Removed' : !c.joined ? 'Settled' : iWon ? 'You won' : refunded ? 'Stakes back' : 'Fumbled it'}</Display>
-            <Body center>{c.settlement.reason}</Body>
-            {myPayout ? (
-              <Row gap={space.xs + 2} style={{ alignItems: 'baseline' }}>
-                <Money>+{sol(myPayout.lamports)}</Money>
-                <Heading color={colors.primary}>SOL</Heading>
+        <Animated.View entering={FadeIn.duration(300)}>
+          <Card tone={c.status === 'banned' ? 'danger' : iWon ? 'success' : undefined}>
+            <Row gap={space.md}>
+              <View style={[styles.resultIcon, { backgroundColor: iWon ? colors.successBg : c.status === 'banned' ? colors.dangerBg : colors.surfaceHi }]}>
+                <Icon name={c.status === 'banned' ? 'cancel' : iWon ? 'trophy-outline' : refunded ? 'cash-refund' : c.joined ? 'close' : 'flag-checkered'} color={iWon ? colors.success : c.status === 'banned' ? colors.danger : colors.textMuted} size={20} />
+              </View>
+              <View style={styles.flex}>
+                <Heading>{c.status === 'banned' ? 'Removed' : !c.joined ? 'Settled' : iWon ? 'You won' : refunded ? 'Stakes returned' : 'You didn’t make it'}</Heading>
+                <Muted>{c.settlement.reason}</Muted>
+              </View>
+              {myPayout ? <Text style={[styles.delta, { color: colors.success }]}>+{coins(myPayout.lamports)}</Text> : null}
+            </Row>
+            <View style={styles.table}>
+              <Row style={styles.tableHead}>
+                <Text style={[styles.th, styles.flex]}>Payout</Text>
+                <Text style={styles.th}>Coins</Text>
               </Row>
-            ) : null}
-            <View style={styles.payouts}>
-              <Label>Payouts on Solana</Label>
               {c.settlement.payouts.length === 0 ? <Muted>No payouts.</Muted> : null}
               {c.settlement.payouts.map((p) => (
-                <Row key={p.userId} style={styles.payoutRow}>
-                  <Icon name={c.settlement!.winners.includes(p.userId) && !refunded ? 'trophy' : 'cash-refund'} color={colors.primary} />
-                  <BodyStrong style={styles.flex} numberOfLines={1}>
+                <Row key={p.userId} style={styles.tr}>
+                  <Text style={[styles.td, styles.flex]} numberOfLines={1}>
                     {p.username}
-                  </BodyStrong>
-                  <BodyStrong color={colors.primary} style={styles.tabular}>
-                    {sol(p.lamports)} SOL
-                  </BodyStrong>
-                  {isRealSig(p.txSig) ? <IconButton name="open-in-new" label={`View ${p.username}'s payout on Solana Explorer`} color={colors.primary} onPress={() => open(explorerTx(p.txSig!))} /> : <Muted>{p.txSig ? 'simulated' : 'sending…'}</Muted>}
+                    {c.settlement!.winners.includes(p.userId) && !refunded ? <Text style={styles.tdDim}>  winner</Text> : null}
+                  </Text>
+                  <Text style={styles.tdNum}>{coins(p.lamports)}</Text>
+                  {isRealSig(p.txSig) ? <IconButton name="open-in-new" label={`View ${p.username}'s payout on Solana Explorer`} color={colors.textMuted} onPress={() => open(explorerTx(p.txSig!))} /> : <Text style={styles.tdDim}>{p.txSig ? '  sim' : '  …'}</Text>}
                 </Row>
               ))}
             </View>
@@ -174,56 +225,74 @@ export default function ChallengeDetail() {
         </Animated.View>
       ) : null}
 
-      {/* Header + pot */}
-      <View style={{ gap: space.sm }}>
-        <Row style={{ flexWrap: 'wrap' }}>
-          <StatusChip c={c} now={now} />
-          <Chip text={c.visibility === 'public' ? 'Public' : 'Friends'} icon={c.visibility === 'public' ? 'earth' : 'account-multiple'} />
-          <Chip text={c.mode === 'open' ? 'Most progress' : 'Hit the target'} icon={c.mode === 'open' ? 'podium-gold' : 'bullseye-arrow'} />
+      {/* Rate the challenge (feeds the creator's rating) */}
+      {c.canRate ? (
+        <Card tone={c.myRating ? undefined : 'attention'}>
+          <Row>
+            <Heading style={styles.flex}>{c.myRating ? 'Your rating' : 'Rate this challenge'}</Heading>
+            {c.rating.count ? <RatingBadge rating={c.rating} size="sm" /> : null}
+          </Row>
+          <Muted>Fair goal, fun to play, worth the stake? Your rating counts toward @{c.creatorUsername}’s creator score.</Muted>
+          <StarInput
+            label={`Rate ${c.title}`}
+            value={c.myRating ?? 0}
+            disabled={busy === 'rate'}
+            onChange={(stars) =>
+              void act('rate', async () => {
+                const v = await api<ChallengeView>(`/challenges/${c.id}/rate`, { body: { stars } });
+                toast(`Rated ${stars} of 5`, 'success', 'star');
+                void refresh();
+                return v;
+              })
+            }
+          />
+        </Card>
+      ) : c.status === 'settled' && c.rating.count ? (
+        <Row style={{ justifyContent: 'space-between' }}>
+          <Muted>Player rating</Muted>
+          <RatingBadge rating={c.rating} />
         </Row>
-        <Title accessibilityRole="header">{c.title}</Title>
-        <Body color={colors.textMuted}>{goalLine(c)}</Body>
-        <Muted>Created by {c.creatorUsername}</Muted>
-      </View>
+      ) : null}
 
-      <Card tone="primary">
-        <Row style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <View>
-            <Label>{c.status === 'active' ? 'Pot in escrow' : 'Final pot'}</Label>
-            <Row gap={space.xs + 2} style={{ alignItems: 'baseline' }}>
-              <Money style={{ fontSize: 56, lineHeight: 58 }}>{sol(c.potLamports)}</Money>
-              <Heading color={colors.primary}>SOL</Heading>
-            </Row>
-            <Muted>
-              {sol(c.stakeLamports)} SOL each · {c.participants.length} {c.participants.length === 1 ? 'player' : 'players'}
-            </Muted>
-          </View>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Label>{c.status === 'active' ? 'Time left' : 'Status'}</Label>
-            <Heading style={[styles.tabular, { fontSize: 26, lineHeight: 30 }]} color={mood === 'nervous' ? colors.danger : colors.text}>
-              {c.status === 'active' ? timeLeft(c.endsAt, now) : c.status}
-            </Heading>
-          </View>
+      {/* Key numbers */}
+      <Card>
+        <View style={styles.grid}>
+          <KeyStat label={c.status === 'active' ? 'Pot in escrow' : 'Final pot'} value={coins(c.potLamports)} unit="coins" pop={c.potLamports} />
+          <KeyStat label="Stake" value={coins(c.stakeLamports)} unit="each" />
+          <KeyStat label="Players" value={String(c.participants.length)} />
+          <KeyStat label={c.status === 'active' ? 'Ends in' : 'Status'} value={c.status === 'active' ? timeLeft(c.endsAt, now) : c.status === 'settled' ? 'Settled' : c.status === 'banned' ? 'Removed' : 'Settling'} color={endingSoon(c, now) && live ? colors.attention : undefined} />
+        </View>
+        <View style={{ gap: 6 }}>
+          <Row style={{ justifyContent: 'space-between' }}>
+            <Muted>{c.category === 'dare' ? 'Players done' : 'Field on track'}</Muted>
+            <Text style={styles.tdNum}>{Math.round(onTrack(c) * 100)}%</Text>
+          </Row>
+          <ProgressBar value={onTrack(c)} />
+        </View>
+        <Row style={{ justifyContent: 'space-between' }}>
+          <AvatarStack people={c.participants} max={6} size={24} />
+          <Text style={styles.metaLink} onPress={() => open(explorerAddress(c.escrowPublicKey))} accessibilityRole="link">
+            View escrow ↗
+          </Text>
         </Row>
-        <Button small variant="secondary" icon="open-in-new" title="View escrow on Solana Explorer" onPress={() => open(explorerAddress(c.escrowPublicKey))} />
         {c.inviteCode && c.visibility === 'friends' && live ? (
           <Row style={styles.invite}>
             <View style={styles.flex}>
-              <Label>Invite code</Label>
-              <Heading color={colors.primary} style={{ letterSpacing: 5, fontSize: 26, lineHeight: 30 }} selectable>
+              <Muted>Invite code</Muted>
+              <Text style={styles.code} selectable>
                 {c.inviteCode}
-              </Heading>
+              </Text>
             </View>
             <IconButton
-              name={copied ? 'check' : 'content-copy'}
+              name="content-copy"
               label="Copy invite code"
-              color={colors.primary}
+              color={colors.textMuted}
               onPress={async () => {
                 await Clipboard.setStringAsync(c.inviteCode!);
-                setCopied(true);
+                toast('Invite code copied', 'success', 'content-copy');
               }}
             />
-            <IconButton name="share-variant" label="Share invite code" color={colors.primary} onPress={() => void Share.share({ message: `Join "${c.title}" on Bet On Me with code ${c.inviteCode} (${sol(c.stakeLamports)} SOL stake).` })} />
+            <IconButton name="share-variant-outline" label="Share invite code" color={colors.textMuted} onPress={async () => (await shareText(`Join "${c.title}" on Bet On Me with code ${c.inviteCode} (${coins(c.stakeLamports)}-coin stake).`)) === 'copied' && toast('Copied — paste it anywhere', 'success', 'content-copy')} />
           </Row>
         ) : null}
       </Card>
@@ -232,15 +301,13 @@ export default function ChallengeDetail() {
 
       {/* My action */}
       {c.joined && live ? (
-        <Card>
-          <Row gap={space.md}>
-            <Butterfingers mood={mood} size={84} />
-            <View style={styles.flex}>
-              <Heading>{mine?.completed ? 'You did it' : 'Your move'}</Heading>
-              <Muted>
-                {mine?.completed && c.category !== 'dare'
-                  ? 'Target reached. Hold on until the clock runs out.'
-                  : c.category === 'strava'
+        <Card tone={endingSoon(c, now) && !mine?.completed ? 'attention' : undefined}>
+          <View style={{ gap: 2 }}>
+            <Heading>{mine?.completed ? 'Goal reached' : 'Your next step'}</Heading>
+            <Muted>
+              {mine?.completed && c.category !== 'dare'
+                ? 'Target reached. Hold on until the clock runs out.'
+                : c.category === 'strava'
                   ? me.stravaConnected
                     ? me.stravaDemo
                       ? 'Demo Strava: log a simulated GPS run to add miles.'
@@ -255,59 +322,78 @@ export default function ChallengeDetail() {
                           ? 'Your proof is being voted on by the other players.'
                           : 'Proof passed. Waiting out the dispute window.'
                         : 'Record a short video doing the dare and saying the secret word.'}
-              </Muted>
-            </View>
+            </Muted>
+          </View>
+          <Row gap={space.sm}>
+            {c.category === 'strava' && !me.stravaConnected ? (
+              <Button
+                small
+                title={me.stravaDemo ? 'Connect demo Strava' : 'Connect Strava'}
+                loading={busy === 'connect'}
+                style={styles.flex}
+                onPress={() =>
+                  void act('connect', async () => {
+                    const r = await connectStrava(refresh);
+                    if (r.ok) toast(r.demo ? 'Demo Strava connected' : 'Strava connected', 'success', 'check');
+                    else throw new Error("Strava didn't connect. Allow activity access and try again.");
+                  })
+                }
+              />
+            ) : c.category === 'dare' ? (
+              !mine?.completed && !myPending ? <Button small title="Record proof" style={styles.flex} onPress={() => router.push(`/dare/${c.id}`)} /> : null
+            ) : c.category === 'strava' && me.stravaDemo ? (
+              <Button
+                small
+                title="Log a demo run"
+                loading={busy === 'run'}
+                style={styles.flex}
+                onPress={() =>
+                  void act('run', async () => {
+                    await api('/strava/demo-run', { method: 'POST' });
+                    return api<ChallengeView>(`/challenges/${c.id}/sync`, { method: 'POST' });
+                  })
+                }
+              />
+            ) : (
+              <Button small title={c.category === 'strava' ? 'Sync runs' : 'Sync rating'} loading={busy === 'sync'} style={styles.flex} onPress={() => void act('sync', () => api<ChallengeView>(`/challenges/${c.id}/sync`, { method: 'POST' }))} />
+            )}
+            <Button small variant="secondary" title="Invite friends" style={styles.flex} onPress={() => void openInvite()} />
           </Row>
-          {c.category === 'strava' && !me.stravaConnected ? (
-            <Button title={me.stravaDemo ? 'Connect demo Strava' : 'Connect Strava'} icon="link-variant" onPress={() => router.push('/profile')} />
-          ) : c.category === 'dare' ? (
-            !mine?.completed && !myPending ? <Button title="Record proof" icon="video" onPress={() => router.push(`/dare/${c.id}`)} /> : null
-          ) : c.category === 'strava' && me.stravaDemo ? (
-            <Button
-              title="Log a demo run"
-              icon="run-fast"
-              loading={busy === 'run'}
-              onPress={() =>
-                void act('run', async () => {
-                  await api('/strava/demo-run', { method: 'POST' });
-                  return api<ChallengeView>(`/challenges/${c.id}/sync`, { method: 'POST' });
-                })
-              }
-            />
-          ) : (
-            <Button title={c.category === 'strava' ? 'Sync runs' : 'Sync rating'} icon="sync" loading={busy === 'sync'} onPress={() => void act('sync', () => api<ChallengeView>(`/challenges/${c.id}/sync`, { method: 'POST' }))} />
-          )}
         </Card>
       ) : null}
 
       {/* Leaderboard */}
-      <View style={{ gap: space.md }}>
+      <View style={{ gap: space.sm }}>
         <Heading accessibilityRole="header">Leaderboard</Heading>
-        {c.participants.map((p, i) => {
-          const you = p.userId === me.id;
-          return (
-            <View key={p.userId} style={[styles.rank, you && { borderColor: colors.primary }]} accessible accessibilityLabel={`Rank ${i + 1}. ${p.username}${you ? ' (you)' : ''}. ${progressLabel(c, p)}${p.completed ? '. Completed' : ''}`}>
-              <View style={[styles.rankNum, i === 0 && { backgroundColor: colors.primary }]}>
-                <Heading color={i === 0 ? colors.onPrimary : colors.text}>{i + 1}</Heading>
+        <Card style={{ paddingVertical: space.xs, gap: 0 }}>
+          {c.participants.map((p, i) => {
+            const you = p.userId === me.id;
+            return (
+              <View key={p.userId}>
+                {i > 0 ? <Divider /> : null}
+                <View style={styles.rank} accessible accessibilityLabel={`Rank ${i + 1}. ${p.username}${you ? ' (you)' : ''}. ${progressLabel(c, p)}${p.completed ? '. Completed' : ''}`}>
+                  <Text style={styles.rankNum}>{i + 1}</Text>
+                  <Squish accessibilityLabel={`Open ${p.username}'s profile`} onPress={() => router.push(`/u/${p.username}`)}>
+                    <Avatar username={p.username} avatar={p.avatar} size={30} />
+                  </Squish>
+                  <View style={[styles.flex, { gap: 6 }]}>
+                    <Row style={{ justifyContent: 'space-between' }}>
+                      <Text style={[styles.td, you && { color: colors.primary }]} numberOfLines={1}>
+                        {p.username}
+                        {you ? ' · you' : ''}
+                      </Text>
+                      <Text style={[styles.tdNum, p.completed && { color: colors.success }]}>
+                        {progressLabel(c, p)}
+                        {p.completed ? ' ✓' : ''}
+                      </Text>
+                    </Row>
+                    <ProgressBar value={progressRatio(c, p)} tone={p.completed ? 'success' : 'primary'} />
+                  </View>
+                </View>
               </View>
-              <View style={[styles.flex, { gap: space.xs + 2 }]}>
-                <Row style={{ justifyContent: 'space-between' }}>
-                  <Row gap={space.xs + 2} style={styles.flex}>
-                    <BodyStrong numberOfLines={1}>
-                      {p.username}
-                      {you ? ' (you)' : ''}
-                    </BodyStrong>
-                    {p.completed ? <Icon name="check-decagram" color={colors.success} size={icon.sm + 4} /> : null}
-                  </Row>
-                  <Heading style={styles.tabular} color={p.completed ? colors.success : colors.text}>
-                    {progressLabel(c, p)}
-                  </Heading>
-                </Row>
-                <ProgressBar value={progressRatio(c, p)} tone={p.completed ? 'success' : 'primary'} />
-              </View>
-            </View>
-          );
-        })}
+            );
+          })}
+        </Card>
       </View>
 
       {/* Dare proofs */}
@@ -330,8 +416,8 @@ export default function ChallengeDetail() {
                 {c.upvotes} up · {c.downvotes} down · {c.reportCount}/3 reports
               </Muted>
             </View>
-            <IconButton name="arrow-up-bold" label="Upvote" active={c.myVote === 1} color={c.myVote === 1 ? colors.success : colors.textMuted} onPress={() => void act('vote', () => api<ChallengeView>(`/challenges/${c.id}/vote`, { body: { value: c.myVote === 1 ? 0 : 1 } }).then(() => undefined))} />
-            <IconButton name="arrow-down-bold" label="Downvote" active={c.myVote === -1} color={c.myVote === -1 ? colors.danger : colors.textMuted} onPress={() => void act('vote', () => api<ChallengeView>(`/challenges/${c.id}/vote`, { body: { value: c.myVote === -1 ? 0 : -1 } }).then(() => undefined))} />
+            <IconButton name="arrow-up" label="Upvote" active={c.myVote === 1} color={c.myVote === 1 ? colors.primary : colors.textMuted} onPress={() => void act('vote', () => api<ChallengeView>(`/challenges/${c.id}/vote`, { body: { value: c.myVote === 1 ? 0 : 1 } }).then(() => undefined))} />
+            <IconButton name="arrow-down" label="Downvote" active={c.myVote === -1} color={c.myVote === -1 ? colors.danger : colors.textMuted} onPress={() => void act('vote', () => api<ChallengeView>(`/challenges/${c.id}/vote`, { body: { value: c.myVote === -1 ? 0 : -1 } }).then(() => undefined))} />
           </Row>
         </Card>
       ) : null}
@@ -340,22 +426,21 @@ export default function ChallengeDetail() {
       {me.demoMode && c.joined && live && (c.visibility === 'friends' || c.creatorId === me.id) ? (
         <Card style={{ borderStyle: 'dashed' }}>
           <Row>
-            <Icon name="flask-outline" color={colors.warn} />
-            <Heading color={colors.warn}>Demo tools</Heading>
+            <Icon name="flask-outline" color={colors.textMuted} size={18} />
+            <Heading color={colors.textMuted}>Demo tools</Heading>
           </Row>
           {c.category !== 'dare' && c.visibility === 'friends' ? (
             <Button
               small
               variant="secondary"
-              icon="plus-circle-outline"
               title={c.category === 'strava' ? 'Simulate +2 miles' : 'Simulate +25 rating'}
               loading={busy === 'sim'}
               onPress={() => void act('sim', () => api<ChallengeView>('/demo/simulate-progress', { body: { challengeId: c.id, amount: c.category === 'strava' ? 2 : 25 } }))}
             />
           ) : null}
           <Button
+            small
             variant="danger"
-            icon="lightning-bolt"
             title="End now"
             loading={busy === 'end'}
             accessibilityHint="Ends the challenge immediately and pays out the winners"
@@ -363,7 +448,58 @@ export default function ChallengeDetail() {
           />
         </Card>
       ) : null}
+      <Sheet visible={inviteOpen} onClose={() => setInviteOpen(false)} title="Call out friends">
+        <Muted>They get it in their Squad inbox and can join in one tap.</Muted>
+        {squad === null ? (
+          <Loading label="Loading friends" />
+        ) : squad.length === 0 ? (
+          <>
+            <Muted>No friends yet — add some from the Squad tab, or share the invite code.</Muted>
+            <Button
+              title="Find friends"
+              icon="account-search"
+              variant="secondary"
+              onPress={() => {
+                setInviteOpen(false);
+                router.navigate('/friends');
+              }}
+            />
+          </>
+        ) : (
+          <View style={{ gap: space.sm }}>
+            {squad.map((f) => {
+              const already = inChallenge.has(f.id);
+              const on = picked.includes(f.id);
+              return (
+                <Squish key={f.id} accessibilityRole="checkbox" accessibilityLabel={`${f.username}${already ? ', already in' : ''}`} disabled={already} onPress={() => setPicked(on ? picked.filter((x) => x !== f.id) : [...picked, f.id])} style={[styles.pick, on && { borderColor: colors.primary }]}>
+                  <Avatar username={f.username} avatar={f.avatar} size={40} />
+                  <BodyStrong style={styles.flex} numberOfLines={1}>
+                    {f.displayName || f.username}
+                  </BodyStrong>
+                  {already ? <Chip text="In" tone="success" icon="check" /> : <Icon name={on ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'} color={on ? colors.primary : colors.textDim} />}
+                </Squish>
+              );
+            })}
+            <Button title={picked.length ? `Send ${picked.length} invite${picked.length === 1 ? '' : 's'}` : 'Pick friends'} icon="send" disabled={!picked.length} loading={busy === 'invite'} onPress={() => void sendInvites()} />
+          </View>
+        )}
+      </Sheet>
     </Screen>
+  );
+}
+
+function KeyStat({ label, value, unit, color, pop }: { label: string; value: string; unit?: string; color?: string; pop?: number }) {
+  const inner = (
+    <Text style={[styles.statValue, color ? { color } : null]} numberOfLines={1}>
+      {value}
+      {unit ? <Text style={styles.statUnit}> {unit}</Text> : null}
+    </Text>
+  );
+  return (
+    <View style={styles.stat} accessible accessibilityLabel={`${label} ${value}${unit ? ' ' + unit : ''}`}>
+      <Text style={styles.statLabel}>{label}</Text>
+      {pop !== undefined ? <Pop trigger={pop}>{inner}</Pop> : inner}
+    </View>
   );
 }
 
@@ -406,9 +542,26 @@ function ProofRow({ p, now, busy, onWatch, onDispute, onVote }: { p: ProofView; 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   tabular: { fontVariant: ['tabular-nums'] },
-  payouts: { alignSelf: 'stretch', gap: space.xs, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: space.md },
-  payoutRow: { minHeight: 48 },
-  invite: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: space.md },
-  rank: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.surface },
-  rankNum: { width: 40, height: 40, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceHi },
+  meta: { fontFamily: fonts.bodyMedium, fontSize: 12.5, color: colors.textMuted },
+  metaLink: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.primary },
+  creator: { alignSelf: 'flex-start', marginTop: 2 },
+  resultIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  delta: { fontFamily: fonts.display, fontSize: 20, letterSpacing: -0.4, fontVariant: ['tabular-nums'] },
+  table: { gap: 0 },
+  tableHead: { paddingBottom: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  th: { fontFamily: fonts.bodyMedium, fontSize: 11.5, color: colors.textMuted },
+  tr: { minHeight: 40, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.hairline },
+  td: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.text },
+  tdNum: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.text, fontVariant: ['tabular-nums'] },
+  tdDim: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: space.md },
+  stat: { width: '50%', gap: 2 },
+  statLabel: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted },
+  statValue: { fontFamily: fonts.display, fontSize: 20, letterSpacing: -0.5, color: colors.text, fontVariant: ['tabular-nums'] },
+  statUnit: { fontFamily: fonts.body, fontSize: 13, letterSpacing: 0, color: colors.textMuted },
+  invite: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: space.md },
+  code: { fontFamily: fonts.bodySemi, fontSize: 20, letterSpacing: 4, color: colors.text },
+  rank: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md },
+  rankNum: { width: 18, fontFamily: fonts.bodySemi, fontSize: 13, color: colors.textMuted, textAlign: 'center', fontVariant: ['tabular-nums'] },
+  pick: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
 });

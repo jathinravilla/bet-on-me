@@ -9,6 +9,14 @@ export function sol(lamports: number): string {
 }
 export const toLamports = (solAmount: number) => Math.round(solAmount * LAMPORTS);
 
+/** In-app currency. 1 coin = 0.001 test SOL on devnet (1,000,000 lamports). */
+export const LAMPORTS_PER_COIN = 1_000_000;
+export function coins(lamports: number): string {
+  if (lamports < 0) return '—';
+  return String(Math.floor(lamports / LAMPORTS_PER_COIN)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+export const coinsToLamports = (n: number) => Math.round(n * LAMPORTS_PER_COIN);
+
 export function timeLeft(endsAt: string, now = Date.now()): string {
   const ms = new Date(endsAt).getTime() - now;
   if (ms <= 0) return 'Ended';

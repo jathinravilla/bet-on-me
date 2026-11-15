@@ -50,7 +50,7 @@ export function matchRoute(routes: Route[], method: string, path: string) {
   return pathMatched ? "method" : null;
 }
 
-const MAX_BODY = 64 * 1024;
+const MAX_BODY = 96 * 1024; // room for a small profile photo
 
 export async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   if (req.method !== "POST") return {};

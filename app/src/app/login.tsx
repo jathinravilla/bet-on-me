@@ -1,14 +1,19 @@
 import { Redirect } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
-import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
-import Svg, { Circle } from 'react-native-svg';
+import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 
-import { Butterfingers } from '@/components/Butterfingers';
-import { Body, Button, DevnetTag, Display, Field, Screen } from '@/components/ui';
+import { Logo } from '@/components/Logo';
+import { Button, DevnetTag, Field, Icon, Muted, Screen, Title } from '@/components/ui';
 import { errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { colors, space } from '@/lib/theme';
+import { colors, fonts, space } from '@/lib/theme';
+
+const POINTS = [
+  { icon: 'shield-check-outline', text: 'Proof is verified automatically — Strava, chess.com, or video.' },
+  { icon: 'account-multiple-outline', text: 'Stake coins against friends or open it up to anyone.' },
+  { icon: 'scale-balance', text: 'Winners are paid out on-chain the moment it settles.' },
+] as const;
 
 export default function Login() {
   const { me, login } = useAuth();
@@ -34,29 +39,27 @@ export default function Login() {
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen>
-        <Animated.View entering={FadeInDown.duration(500)} style={styles.hero}>
-          <View style={styles.halo} pointerEvents="none">
-            <Svg width="100%" height="100%" viewBox="0 0 300 300">
-              <Circle cx={150} cy={150} r={148} fill={colors.primary} opacity={0.06} />
-              <Circle cx={150} cy={150} r={108} fill={colors.primary} opacity={0.08} />
-              <Circle cx={150} cy={150} r={70} fill={colors.primary} opacity={0.1} />
-            </Svg>
+        <Animated.View entering={FadeIn.duration(400)} style={styles.top}>
+          <Logo size={36} />
+          <View style={{ gap: space.sm }}>
+            <Title accessibilityRole="header" style={styles.headline}>
+              Put stakes on your goals.
+            </Title>
+            <Muted style={{ fontSize: 15, lineHeight: 22 }}>Challenge yourself and your friends. Hit the goal, take the pot.</Muted>
           </View>
-          <Butterfingers mood={busy ? 'thinking' : error ? 'nervous' : 'idle'} size={220} />
+          <View style={styles.points}>
+            {POINTS.map((p) => (
+              <View key={p.text} style={styles.point}>
+                <Icon name={p.icon} color={colors.primary} size={18} />
+                <Text style={styles.pointText}>{p.text}</Text>
+              </View>
+            ))}
+          </View>
         </Animated.View>
 
-        <Animated.View entering={FadeInUp.delay(120).duration(450)} style={styles.copy}>
-          <Display center accessibilityRole="header">
-            Bet on <Display color={colors.primary}>me</Display>
-          </Display>
-          <Body center color={colors.textMuted}>
-            Put money on your own goals. Run it, win it, or do the dare — Butterfingers checks the proof and pays the winners.
-          </Body>
-        </Animated.View>
-
-        <Animated.View entering={FadeInUp.delay(220).duration(450)} style={styles.form}>
+        <Animated.View entering={FadeIn.delay(120).duration(400)} style={styles.form}>
           <Field
-            label="Pick a username"
+            label="Username"
             value={username}
             onChangeText={(t) => {
               setUsername(t);
@@ -71,10 +74,10 @@ export default function Login() {
             returnKeyType="go"
             onSubmitEditing={submit}
             error={error}
-            hint="No password needed. New here? You get a wallet with free test SOL."
+            hint="No password needed. New accounts start with 2,000 test coins."
           />
-          <Button title="Let's go" icon="arrow-right-bold" onPress={submit} loading={busy} disabled={clean.length < 3} />
-          <View style={styles.center}>
+          <Button title="Continue" onPress={submit} loading={busy} disabled={clean.length < 3} />
+          <View style={{ alignItems: 'center' }}>
             <DevnetTag />
           </View>
         </Animated.View>
@@ -85,9 +88,10 @@ export default function Login() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.bg },
-  hero: { alignItems: 'center', justifyContent: 'center', height: 280, marginTop: space.lg },
-  halo: { position: 'absolute', width: 300, height: 300 },
-  copy: { gap: space.md, paddingHorizontal: space.sm },
-  form: { gap: space.lg, marginTop: space.sm },
-  center: { alignItems: 'center' },
+  top: { gap: space.xl, paddingTop: space.xxl },
+  headline: { fontSize: 30, lineHeight: 36, letterSpacing: -0.9 },
+  points: { gap: space.md, paddingVertical: space.sm },
+  point: { flexDirection: 'row', gap: space.md, alignItems: 'flex-start' },
+  pointText: { flex: 1, fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: colors.textMuted },
+  form: { gap: space.lg, marginTop: space.xl },
 });

@@ -192,6 +192,93 @@ test("demo Strava: connect, log a run, miles show up after sync", async () => {
   assert.equal(synced.participants[0].progress, run.miles);
 });
 
+test("friends: request, accept, see friends-only bets, invite, join without a code", async () => {
+  const a = await login("fr_ana");
+  const b = await login("fr_ben");
+  const c = await login("fr_cy");
+  type FV = { friends: { id: string }[]; incoming: { id: string }[]; outgoing: { id: string }[]; invites: { challengeId: string }[] };
+
+  // Request + accept.
+  assert.equal((await call<FV>("POST", "/friends/request", a.token, { username: "fr_ben" })).data.outgoing.length, 1);
+  assert.equal((await call<FV>("POST", "/friends/request", a.token, { username: "fr_ana" })).status, 400); // can't add yourself
+  const inbox = (await call<FV>("GET", "/friends", b.token)).data;
+  assert.equal(inbox.incoming[0].id, a.me.id);
+  assert.equal((await call<FV>("POST", "/friends/respond", b.token, { userId: a.me.id, accept: true })).data.friends[0].id, a.me.id);
+  assert.equal((await me(a.token)).friendCount, 1);
+
+  // A friends-only challenge is visible to the creator's friends but not strangers.
+  const ch = (await call<ChallengeView>("POST", "/challenges", a.token, strava({ inviteFriendIds: [b.me.id, c.me.id] }))).data;
+  assert.equal((await call("GET", `/challenges/${ch.id}`, b.token)).status, 200);
+  assert.equal((await call("GET", `/challenges/${ch.id}`, c.token)).status, 404); // c isn't a friend, so no invite either
+  assert.equal((await me(b.token)).pendingInvites, 1);
+  assert.equal((await call<FV>("GET", "/friends", b.token)).data.invites[0].challengeId, ch.id);
+
+  // Feed shows it; the friend joins by id (no code) and the invite clears.
+  const feed = (await call<{ live: ChallengeView[]; activity: unknown[] }>("GET", "/friends/feed", b.token)).data;
+  assert.equal(feed.live[0].id, ch.id);
+  assert.ok(feed.activity.length >= 1);
+  const joined = (await call<ChallengeView>("POST", "/challenges/join", b.token, { challengeId: ch.id })).data;
+  assert.equal(joined.participants.length, 2);
+  assert.equal((await me(b.token)).pendingInvites, 0);
+  assert.equal((await call("POST", "/challenges/join", c.token, { challengeId: ch.id })).status, 403);
+
+  // Unfriending hides future friends-only bets.
+  await call("POST", "/friends/remove", b.token, { userId: a.me.id });
+  assert.equal((await me(a.token)).friendCount, 0);
+});
+
+test("profile: display name, bio, avatar and integration votes", async () => {
+  const a = await login("prof_al");
+  const ok = await call<MeView>("POST", "/me/profile", a.token, { displayName: "Al", bio: "Running to 1200", avatar: { color: "#8FB2FF", emoji: "🔥" } });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.data.displayName, "Al");
+  assert.equal(ok.data.avatar.emoji, "🔥");
+  assert.equal((await call("POST", "/me/profile", a.token, { avatar: { color: "#123456" } })).status, 400);
+  assert.equal((await call("POST", "/me/profile", a.token, { avatar: { color: "#8FB2FF", image: "javascript:alert(1)" } })).status, 400);
+  const cleared = await call<MeView>("POST", "/me/profile", a.token, { displayName: "" });
+  assert.equal(cleared.data.displayName, undefined);
+  assert.deepEqual((await call<MeView>("POST", "/me/integrations", a.token, { key: "github" })).data.integrationsWanted, ["github"]);
+  assert.deepEqual((await call<MeView>("POST", "/me/integrations", a.token, { key: "github" })).data.integrationsWanted, []);
+  assert.equal((await call("POST", "/me/integrations", a.token, { key: "myspace" })).status, 400);
+  const pub = await call<{ username: string; stats: { played: number } }>("GET", "/users/prof_al", a.token);
+  assert.equal(pub.data.username, "prof_al");
+  assert.equal((await call<unknown[]>("GET", "/users/search?q=prof", a.token)).data.length, 0); // you never see yourself
+});
+
+test("longer durations are accepted, odd ones rejected", async () => {
+  const a = await login("dur_dee");
+  assert.equal((await call("POST", "/challenges", a.token, strava({ durationMinutes: 43200 }))).status, 200);
+  assert.equal((await call("POST", "/challenges", a.token, strava({ durationMinutes: 999 }))).status, 400);
+});
+
+test("ratings: players rate the challenge; it builds the creator's profile rating", async () => {
+  const a = await login("rt_amy"); // creator
+  const b = await login("rt_bo");
+  const c = await login("rt_cal");
+  const ch = (await call<ChallengeView>("POST", "/challenges", a.token, strava())).data;
+  await call("POST", "/challenges/join", b.token, { inviteCode: ch.inviteCode });
+  await call("POST", "/challenges/join", c.token, { inviteCode: ch.inviteCode });
+  assert.equal((await call("POST", `/challenges/${ch.id}/rate`, b.token, { stars: 5 })).status, 409); // not settled yet
+  await call("POST", "/demo/end-now", a.token, { challengeId: ch.id });
+
+  assert.equal((await me(b.token)).pendingRatings, 1);
+  assert.equal((await me(a.token)).pendingRatings, 0); // creators don't rate their own
+  assert.equal((await call("POST", `/challenges/${ch.id}/rate`, a.token, { stars: 5 })).status, 400);
+  assert.equal((await call("POST", `/challenges/${ch.id}/rate`, b.token, { stars: 0 })).status, 400);
+
+  const v = (await call<ChallengeView>("POST", `/challenges/${ch.id}/rate`, b.token, { stars: 4 })).data;
+  assert.equal(v.myRating, 4);
+  await call("POST", `/challenges/${ch.id}/rate`, c.token, { stars: 5 });
+  await call("POST", `/challenges/${ch.id}/rate`, b.token, { stars: 2 }); // re-rating replaces
+  assert.deepEqual((await me(a.token)).rating, { avg: 3.5, count: 2 });
+  assert.deepEqual((await call<ChallengeView>("GET", `/challenges/${ch.id}`, c.token)).data.rating, { avg: 3.5, count: 2 });
+  assert.equal((await me(b.token)).pendingRatings, 0);
+  assert.equal((await me(b.token)).rating.count, 0); // players' own rating is untouched
+
+  const d = await login("rt_dee");
+  assert.equal((await call("POST", `/challenges/${ch.id}/rate`, d.token, { stars: 1 })).status, 403);
+});
+
 test("sign-ups are rate limited per IP", async () => {
   const statuses: number[] = [];
   for (let i = 0; i < 10; i++) {

@@ -1,86 +1,142 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import type { ChallengeView } from '../../../lib/types';
-import { Chip, Heading, Icon, IconButton, Label, Money, Muted, Row } from '@/components/ui';
-import { endingSoon, goalLine, sol, timeLeft } from '@/lib/format';
-import { categoryMeta, colors, icon, radius, space } from '@/lib/theme';
+import { AvatarStack, CategoryMark, LiveDot, Squish } from '@/components/fx';
+import { Chip, Heading, IconButton, Muted, Row } from '@/components/ui';
+import { coins, endingSoon, goalLine, progressRatio, timeLeft } from '@/lib/format';
+import { categoryMeta, colors, fonts, radius, space } from '@/lib/theme';
 
 export function StatusChip({ c, now }: { c: ChallengeView; now: number }) {
-  if (c.status === 'banned') return <Chip text="Removed" icon="cancel" tone="danger" />;
-  if (c.status === 'settled') return <Chip text="Settled" icon="check-decagram" tone="success" />;
-  if (c.status === 'settling' || new Date(c.endsAt).getTime() <= now) return <Chip text="Settling" icon="timer-sand" tone="warn" />;
-  if (endingSoon(c, now)) return <Chip text="Ending soon" icon="fire" tone="danger" />;
-  return <Chip text="Live" icon="circle" tone="success" />;
+  if (c.status === 'banned') return <Chip text="Removed" tone="danger" />;
+  if (c.status === 'settled') return <Chip text="Settled" tone="neutral" />;
+  if (c.status === 'settling' || new Date(c.endsAt).getTime() <= now) return <Chip text="Settling" tone="neutral" />;
+  if (endingSoon(c, now)) return <Chip text="Ending soon" tone="attention" />;
+  return <Chip text="Live" tone="primary" />;
 }
 
-export function ChallengeCard({ c, now, onPress, onVote }: { c: ChallengeView; now: number; onPress: () => void; onVote?: (v: 1 | -1 | 0) => void }) {
+/** Share of the field that is on pace or done (0..1). */
+export function onTrack(c: ChallengeView) {
+  if (c.participants.length === 0) return 0;
+  if (c.category === 'dare') return c.participants.filter((p) => p.completed).length / c.participants.length;
+  return c.participants.reduce((sum, p) => sum + progressRatio(c, p), 0) / c.participants.length;
+}
+
+export function ChallengeCard({
+  c,
+  now,
+  onPress,
+  onVote,
+  highlight,
+}: {
+  c: ChallengeView;
+  now: number;
+  onPress: () => void;
+  onVote?: (v: 1 | -1 | 0) => void;
+  /** e.g. "maya & leo in" on the Squad board */
+  highlight?: string;
+}) {
   const meta = categoryMeta[c.category];
   const players = c.participants.length;
+  const live = c.status === 'active' && new Date(c.endsAt).getTime() > now;
+  const hot = live && endingSoon(c, now);
+  const pct = Math.round(onTrack(c) * 100);
+  const toRate = c.canRate && !c.myRating;
+  const when = live ? `Ends in ${timeLeft(c.endsAt, now)}` : c.status === 'settled' ? 'Settled' : c.status === 'banned' ? 'Removed' : 'Settling';
+
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${c.title}. ${meta.label}. Pot ${sol(c.potLamports)} SOL. ${players} players. ${c.status === 'active' ? timeLeft(c.endsAt, now) + ' left' : c.status}.`}
+    <Squish
+      accessibilityLabel={`${c.title}. ${meta.label}. Pot ${coins(c.potLamports)} coins. ${players} players. ${when}. ${pct}% on track.`}
       onPress={onPress}
-      style={({ pressed }) => [styles.card, pressed && { opacity: 0.8, borderColor: colors.primary }]}>
+      style={[styles.card, (hot || toRate) && { borderColor: colors.attention }]}>
       <Row gap={space.md} style={{ alignItems: 'flex-start' }}>
-        <View style={styles.badge}>
-          <Icon name={meta.icon} color={colors.onPrimary} size={icon.lg} />
-        </View>
+        <CategoryMark category={c.category} />
         <View style={styles.flex}>
-          <Heading numberOfLines={2}>{c.title}</Heading>
-          <Muted numberOfLines={2}>{goalLine(c)}</Muted>
+          <Row gap={6}>
+            {live ? <LiveDot color={hot ? colors.attention : colors.primary} size={6} /> : null}
+            <Text style={[styles.meta, hot && { color: colors.attention }]} numberOfLines={1}>
+              {meta.label} · {when}
+            </Text>
+          </Row>
+          <Heading numberOfLines={2} style={{ marginTop: 2 }}>
+            {c.title}
+          </Heading>
+          <Muted numberOfLines={1}>{c.description || goalLine(c)}</Muted>
         </View>
-        <StatusChip c={c} now={now} />
+        {live || c.status === 'settling' ? (
+          <View style={styles.odds}>
+            <Text style={[styles.pct, { color: pct > 0 ? colors.text : colors.textMuted }]}>{pct}%</Text>
+            <Text style={styles.pctLabel}>{c.category === 'dare' ? 'done' : 'on track'}</Text>
+          </View>
+        ) : (
+          <View style={styles.odds}>
+            <Text style={styles.pct}>
+              {c.participants.filter((p) => p.completed).length}
+              <Text style={styles.pctOf}>/{players}</Text>
+            </Text>
+            <Text style={styles.pctLabel}>hit goal</Text>
+          </View>
+        )}
       </Row>
 
-      <Row style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
-        <View>
-          <Label>Pot</Label>
-          <Row gap={space.xs + 2} style={{ alignItems: 'baseline' }}>
-            <Money>{sol(c.potLamports)}</Money>
-            <Heading color={colors.primary}>SOL</Heading>
-          </Row>
-        </View>
-        <View style={{ alignItems: 'flex-end', gap: space.xs }}>
-          <Row gap={space.xs + 2}>
-            <Icon name="account-group" size={icon.sm} color={colors.textMuted} />
-            <Muted>
-              {players} {players === 1 ? 'player' : 'players'}
-            </Muted>
-          </Row>
-          {c.status === 'active' ? (
-            <Row gap={space.xs + 2}>
-              <Icon name="clock-outline" size={icon.sm} color={colors.textMuted} />
-              <Muted style={{ fontVariant: ['tabular-nums'] }}>{timeLeft(c.endsAt, now)}</Muted>
-            </Row>
-          ) : null}
+      {live ? (
+      <View style={styles.meter}>
+        <View style={[styles.meterFill, { width: `${Math.max(pct, 2)}%`, backgroundColor: hot ? colors.attention : colors.primary }]} />
+      </View>
+      ) : null}
+
+      <Row style={{ justifyContent: 'space-between' }}>
+        <Row gap={space.lg}>
+          <View>
+            <Text style={styles.k}>Pot</Text>
+            <Text style={styles.v}>{coins(c.potLamports)}</Text>
+          </View>
+          <View>
+            <Text style={styles.k}>Stake</Text>
+            <Text style={styles.v}>{coins(c.stakeLamports)}</Text>
+          </View>
           {c.myRank ? (
-            <Row gap={space.xs + 2}>
-              <Icon name="podium" size={icon.sm} color={colors.primary} />
-              <Muted color={colors.primary}>
-                You&apos;re #{c.myRank} of {players}
-              </Muted>
-            </Row>
+            <View>
+              <Text style={styles.k}>You</Text>
+              <Text style={styles.v}>
+                #{c.myRank}
+                <Text style={styles.vDim}>/{players}</Text>
+              </Text>
+            </View>
           ) : null}
-        </View>
+        </Row>
+        <Row gap={6}>
+          {highlight ? <Muted numberOfLines={1}>{highlight}</Muted> : null}
+          <AvatarStack people={c.participants} size={22} max={3} />
+        </Row>
       </Row>
 
-      {onVote && c.status === 'active' ? (
+      {toRate ? <Chip text="Rate this challenge" icon="star-outline" tone="attention" /> : null}
+
+      {onVote && live ? (
         <Row style={styles.votes}>
-          <Chip text={c.visibility === 'public' ? 'Public' : 'Friends'} icon={c.visibility === 'public' ? 'earth' : 'account-multiple'} />
-          <View style={styles.flex} />
-          <IconButton name="arrow-up-bold" label={`Upvote. ${c.upvotes} upvotes`} active={c.myVote === 1} color={c.myVote === 1 ? colors.success : colors.textMuted} onPress={() => onVote(c.myVote === 1 ? 0 : 1)} />
-          <Heading style={{ minWidth: 28, textAlign: 'center', fontVariant: ['tabular-nums'] }}>{c.upvotes - c.downvotes}</Heading>
-          <IconButton name="arrow-down-bold" label={`Downvote. ${c.downvotes} downvotes`} active={c.myVote === -1} color={c.myVote === -1 ? colors.danger : colors.textMuted} onPress={() => onVote(c.myVote === -1 ? 0 : -1)} />
+          <Muted style={styles.flex}>{c.joined ? 'You’re in' : 'Open to join'}</Muted>
+          <IconButton name="arrow-up" label={`Upvote. ${c.upvotes} upvotes`} active={c.myVote === 1} color={c.myVote === 1 ? colors.primary : colors.textMuted} onPress={() => onVote(c.myVote === 1 ? 0 : 1)} />
+          <Text style={styles.score}>{c.upvotes - c.downvotes}</Text>
+          <IconButton name="arrow-down" label={`Downvote. ${c.downvotes} downvotes`} active={c.myVote === -1} color={c.myVote === -1 ? colors.danger : colors.textMuted} onPress={() => onVote(c.myVote === -1 ? 0 : -1)} />
         </Row>
       ) : null}
-    </Pressable>
+    </Squish>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.border, padding: space.lg, gap: space.lg },
-  badge: { width: 52, height: 52, borderRadius: radius.md, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  votes: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: space.sm, marginTop: -space.xs },
+  card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: space.lg, gap: space.md },
+  meta: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textMuted },
+  odds: { alignItems: 'flex-end', minWidth: 56 },
+  pct: { fontFamily: fonts.display, fontSize: 22, lineHeight: 26, letterSpacing: -0.6, fontVariant: ['tabular-nums'] },
+  pctOf: { fontFamily: fonts.body, fontSize: 15, color: colors.textMuted },
+  pctLabel: { fontFamily: fonts.body, fontSize: 11, color: colors.textMuted },
+  meter: { height: 3, borderRadius: 2, backgroundColor: colors.surfaceHi, overflow: 'hidden' },
+  meterFill: { height: '100%', borderRadius: 2 },
+  k: { fontFamily: fonts.body, fontSize: 11, color: colors.textMuted },
+  v: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.text, fontVariant: ['tabular-nums'] },
+  vDim: { fontFamily: fonts.body, color: colors.textMuted },
+  votes: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: space.xs },
+  score: { minWidth: 24, textAlign: 'center', fontFamily: fonts.bodySemi, fontSize: 14, color: colors.text, fontVariant: ['tabular-nums'] },
 });
