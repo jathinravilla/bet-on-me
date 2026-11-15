@@ -29,6 +29,7 @@ import { cols, rateLimit, type ChallengeDoc, type DareProofDoc, type UserDoc } f
 import { DEMO_MODE, MAX_USERS, SOLANA_MOCK, STRAVA_DEMO, need } from "./env";
 import { CHESS_USERNAME, chessPlayerExists, chessRating, stravaAuthorizeUrl, stravaExchange } from "./external";
 import { judgeDareVideo, screenDare } from "./gemini";
+import { LOCAL_MEDIA, localUpload, localVideoPath, originOf, readLocalVideo, serveLocalVideo } from "./localmedia";
 import { HttpError, num, objectIdStr, oneOf, optStr, str, type Ctx, type Route } from "./http";
 import {
   avatarOf,
@@ -632,6 +633,13 @@ async function dareUploadToken(ctx: Ctx): Promise<UploadTokenResponse> {
   if (Date.now() - proof.wordIssuedAt.getTime() > WORD_TTL_MS + VERIFY_GRACE_MS) throw new HttpError(410, "That liveness word expired. Tap Record proof again.");
   const ext = oneOf(ctx.body.ext ?? "mov", "File type", ["mov", "mp4"] as const);
   const contentType = ext === "mov" ? "video/quicktime" : "video/mp4";
+  if (LOCAL_MEDIA()) {
+    // Local dev without Vercel Blob: upload straight to this server with a one-time key.
+    const key = randomToken(24);
+    const { proofs } = await cols();
+    await proofs.updateOne({ _id: proof._id }, { $set: { uploadPath: `local/${proof._id.toHexString()}.${ext}`, localUploadKey: sha256(key) } });
+    return { uploadUrl: `${originOf(ctx)}/api/dare/local-upload/${proof._id.toHexString()}?k=${key}`, headers: { "content-type": contentType } };
+  }
   const pathname = `dares/${proof._id.toHexString()}-${randomToken(9)}.${ext}`;
   // A one-shot upload ticket: this exact file name, video only, small, valid for 10 minutes.
   const clientToken = await generateClientTokenFromReadWriteToken({
@@ -672,12 +680,20 @@ async function dareVerify(ctx: Ctx): Promise<DareVerifyResponse> {
   } catch {
     throw new HttpError(400, "Invalid video URL.");
   }
-  if (url.protocol !== "https:" || !url.hostname.endsWith(".public.blob.vercel-storage.com") || decodeURIComponent(url.pathname) !== `/${proof.uploadPath}` || url.search || url.username) {
-    throw new HttpError(400, "Invalid video URL.");
+  let video: Buffer;
+  if (LOCAL_MEDIA() && proof.uploadPath.startsWith("local/")) {
+    // Local file: the URL must point at exactly this proof's file; we read it from disk, never fetch it.
+    const ext = proof.uploadPath.endsWith(".mov") ? "mov" : "mp4";
+    if (url.pathname !== localVideoPath(proof._id.toHexString(), ext) || url.search || url.username) throw new HttpError(400, "Invalid video URL.");
+    video = await readLocalVideo(proof._id.toHexString(), ext);
+  } else {
+    if (url.protocol !== "https:" || !url.hostname.endsWith(".public.blob.vercel-storage.com") || decodeURIComponent(url.pathname) !== `/${proof.uploadPath}` || url.search || url.username) {
+      throw new HttpError(400, "Invalid video URL.");
+    }
+    const res = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) throw new HttpError(400, "Couldn't read the uploaded video. Try recording again.");
+    video = Buffer.from(await res.arrayBuffer());
   }
-  const res = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(20_000) });
-  if (!res.ok) throw new HttpError(400, "Couldn't read the uploaded video. Try recording again.");
-  const video = Buffer.from(await res.arrayBuffer());
   if (video.length === 0 || video.length > MAX_VIDEO_BYTES) throw new HttpError(400, "That video is too large. Keep it under 15 seconds.");
 
   const { proofs } = await cols();
@@ -825,6 +841,8 @@ export const routes: Route[] = [
   { method: "POST", pattern: "/dare/start", auth: true, handler: dareStart },
   { method: "POST", pattern: "/dare/upload-token", auth: true, handler: dareUploadToken },
   { method: "POST", pattern: "/dare/verify", auth: true, handler: dareVerify },
+  { method: "PUT", pattern: "/dare/local-upload/:proofId", auth: false, handler: localUpload },
+  { method: "GET", pattern: "/dare/local-video/:file", auth: false, handler: serveLocalVideo },
   { method: "POST", pattern: "/dare/:proofId/dispute", auth: true, handler: dareDispute },
   { method: "POST", pattern: "/dare/:proofId/vote", auth: true, handler: dareVote },
   { method: "GET", pattern: "/cron/settle-due", auth: false, handler: cronSettleDue },

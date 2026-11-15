@@ -14,4 +14,6 @@ export const SOLANA_MOCK = () => process.env.SOLANA_MOCK === "true" && !process.
 export const STRAVA_DEMO = () => DEMO_MODE() && !process.env.STRAVA_CLIENT_ID;
 export const RPC_URL = () => process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
 export const GEMINI_MODEL = () => process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+/** No Gemini key on a local machine: screen dares with simple rules and leave video checks to player votes. */
+export const AI_OFFLINE = () => !process.env.GEMINI_API_KEY && !process.env.VERCEL;
 export const MAX_USERS = () => Number(process.env.MAX_USERS || 150);

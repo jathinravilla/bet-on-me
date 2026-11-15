@@ -22,7 +22,7 @@ export interface Ctx {
 export type Handler = (ctx: Ctx) => Promise<unknown>;
 
 export interface Route {
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "PUT";
   pattern: string; // e.g. /challenges/:id/sync
   auth: boolean;
   handler: Handler;

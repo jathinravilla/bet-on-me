@@ -279,6 +279,32 @@ test("ratings: players rate the challenge; it builds the creator's profile ratin
   assert.equal((await call("POST", `/challenges/${ch.id}/rate`, d.token, { stars: 1 })).status, 403);
 });
 
+test("dares work locally without Gemini or Blob keys: rule screen, local upload, players vote", async () => {
+  const a = await login("dl_ana");
+  const b = await login("dl_ben");
+  const dare = { title: "Karaoke night", category: "dare", visibility: "friends", mode: "target", stakeLamports: sol(0.01), durationMinutes: 5 };
+  const blocked = await call("POST", "/challenges", a.token, { ...dare, dareText: "Take five shots of vodka on camera" });
+  assert.equal(blocked.status, 422);
+  const ch = (await call<ChallengeView>("POST", "/challenges", a.token, { ...dare, dareText: "Sing a full chorus loudly at home" })).data;
+  assert.ok(ch.id);
+  await call("POST", "/challenges/join", b.token, { inviteCode: ch.inviteCode });
+
+  const start = (await call<{ proofId: string; word: string }>("POST", "/dare/start", a.token, { challengeId: ch.id })).data;
+  const ticket = (await call<{ uploadUrl: string; headers: Record<string, string> }>("POST", "/dare/upload-token", a.token, { proofId: start.proofId, ext: "mp4" })).data;
+  assert.match(ticket.uploadUrl, /\/api\/dare\/local-upload\//);
+  const local = ticket.uploadUrl.replace(/^http:\/\/[^/]+\/api/, base);
+  const bad = await fetch(local.replace(/k=[^&]+/, "k=wrong"), { method: "PUT", body: Buffer.from("x") });
+  assert.equal(bad.status, 403);
+  const up = await fetch(local, { method: "PUT", headers: ticket.headers, body: Buffer.from("fake mp4 bytes") });
+  assert.equal(up.status, 200);
+  const { url } = (await up.json()) as { url: string };
+  assert.equal((await fetch(local, { method: "PUT", body: Buffer.from("again") })).status, 403); // one upload per key
+
+  const v = (await call<{ verdict: string; voting: boolean }>("POST", "/dare/verify", a.token, { proofId: start.proofId, videoUrl: url })).data;
+  assert.equal(v.verdict, "unsure");
+  assert.equal(v.voting, true); // no AI here, so the other player decides
+});
+
 test("sign-ups are rate limited per IP", async () => {
   const statuses: number[] = [];
   for (let i = 0; i < 10; i++) {

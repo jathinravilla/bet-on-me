@@ -92,6 +92,7 @@ export interface DareProofDoc {
   livenessWord: string;
   wordIssuedAt: Date;
   uploadPath?: string;
+  localUploadKey?: string; // local dev only: sha256 of the one-time upload key
   videoUrl?: string;
   gemini?: { verdict: DareVerdict; reason: string; checkedAt: Date };
   voting: boolean;
