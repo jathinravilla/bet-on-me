@@ -14,6 +14,16 @@ function clientIp(req: IncomingMessage): string {
 }
 
 export async function handle(req: IncomingMessage, res: ServerResponse) {
+  // The web version of the app lives on a different address, so browsers need these headers. Login is a
+  // Bearer token (no cookies), so allowing any origin does not let another site act as a logged-in user.
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+  res.setHeader("Access-Control-Max-Age", "86400");
+  if ((req.method ?? "").toUpperCase() === "OPTIONS") {
+    res.statusCode = 204;
+    return void res.end();
+  }
   try {
     const url = new URL(req.url ?? "/", "http://local");
     const rewritten = url.searchParams.get("__p");

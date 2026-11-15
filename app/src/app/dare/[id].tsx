@@ -209,7 +209,7 @@ const styles = StyleSheet.create({
   timer: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   recDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.danger },
   wordCard: { backgroundColor: colors.primary, borderRadius: radius.lg, paddingVertical: space.md, paddingHorizontal: space.lg, alignItems: 'center' },
-  word: { fontFamily: fonts.display, fontSize: 48, lineHeight: 56, letterSpacing: -1, color: colors.onPrimary },
+  word: { fontFamily: fonts.display, fontSize: 61, lineHeight: 62, letterSpacing: 0.3, color: colors.onPrimary },
   resultIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
   stepNum: { width: 24, height: 24, borderRadius: 12, textAlign: 'center', lineHeight: 24, overflow: 'hidden', backgroundColor: colors.surfaceHi, fontFamily: fonts.bodySemi, fontSize: 12, color: colors.text },
   overlayBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: space.xl, paddingTop: space.lg, gap: space.lg, alignItems: 'stretch', backgroundColor: colors.scrim },

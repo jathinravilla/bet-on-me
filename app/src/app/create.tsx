@@ -636,7 +636,7 @@ const styles = StyleSheet.create({
   quickOn: { backgroundColor: colors.text, borderColor: colors.text },
   quickText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.text },
   stakeHero: { borderRadius: radius.lg, paddingVertical: space.lg, alignItems: 'center', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  stakeBig: { fontFamily: fonts.display, fontSize: 48, lineHeight: 56, letterSpacing: -1.6, color: colors.text, fontVariant: ['tabular-nums'] },
+  stakeBig: { fontFamily: fonts.display, fontSize: 61, lineHeight: 62, letterSpacing: 0.3, color: colors.text, fontVariant: ['tabular-nums'] },
   stakeUnit: { fontFamily: fonts.body, fontSize: 13, color: colors.textMuted },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   stakeCell: { flexBasis: '22%', flexGrow: 1, height: 44, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 4 },

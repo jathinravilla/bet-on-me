@@ -5,13 +5,14 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 
 import type { Category, ChallengeView } from '../../../../lib/types';
 import { ChallengeCard } from '@/components/ChallengeCard';
-import { Avatar, Squish } from '@/components/fx';
-import { Banner, Button, DevnetTag, Heading, Icon, Label, Loading, Muted, Row, Screen, Segmented } from '@/components/ui';
+import { Butterfingers } from '@/components/Butterfingers';
+import { Avatar, Gradient, Squish } from '@/components/fx';
+import { Banner, Button, DevnetTag, Heading, Loading, Muted, Row, Screen, Segmented } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { coins } from '@/lib/format';
 import { useNow } from '@/lib/useNow';
-import { colors, fonts, radius, space } from '@/lib/theme';
+import { colors, fonts, gradients, radius, space } from '@/lib/theme';
 
 type Tab = 'mine' | 'public';
 type Filter = 'all' | Category;
@@ -90,22 +91,25 @@ export default function Home() {
         </Squish>
       </Row>
 
-      {/* Portfolio */}
-      <View style={{ gap: space.xs }}>
-        <Label>Balance</Label>
+      {/* Hero: glacier card, navy type, mascot */}
+      <Gradient colors={gradients.hero} style={styles.hero}>
+        <View style={styles.mascot} pointerEvents="none">
+          <Butterfingers mood="idle" size={150} />
+        </View>
+        <Text style={styles.heroLabel}>Your balance</Text>
         <Row gap={6} style={{ alignItems: 'baseline' }}>
           <Text style={styles.balance}>{coins(me.wallet.balanceLamports)}</Text>
           <Text style={styles.unit}>coins</Text>
         </Row>
-        <Row gap={space.xl} style={{ marginTop: space.xs }}>
+        <Row gap={space.sm} style={{ marginTop: space.sm, flexWrap: 'wrap' }}>
           <Stat label="In play" value={coins(inPlay)} />
           <Stat label="Pots you’re in" value={coins(atStake)} />
           <Stat label="Open bets" value={String(myLive.length)} />
         </Row>
-      </View>
+      </Gradient>
       <Row gap={space.sm}>
-        <Button small title="New challenge" icon="plus" onPress={() => router.push('/create')} style={styles.flex} />
-        <Button small variant="secondary" title="Join with code" icon="ticket-outline" onPress={() => router.push('/join')} style={styles.flex} />
+        <Button title="New challenge" icon="plus" onPress={() => router.push('/create')} style={styles.flex} />
+        <Button variant="secondary" title="Join with code" icon="ticket-outline" onPress={() => router.push('/join')} style={styles.flex} />
       </Row>
 
       {error ? <Banner text={error} /> : null}
@@ -123,7 +127,7 @@ export default function Home() {
           const on = filter === f.value;
           return (
             <Squish key={f.value} accessibilityRole="radio" accessibilityLabel={`Show ${f.label}`} onPress={() => setFilter(f.value)} style={[styles.filter, on && styles.filterOn]}>
-              <Text style={[styles.filterText, on && { color: colors.bg }]}>{f.label}</Text>
+              <Text style={[styles.filterText, on && { color: colors.onPrimary }]}>{f.label}</Text>
             </Squish>
           );
         })}
@@ -133,10 +137,8 @@ export default function Home() {
         <Loading label="Loading challenges" />
       ) : shown.length === 0 ? (
         <View style={styles.empty}>
-          <View style={styles.emptyIcon}>
-            <Icon name={tab === 'mine' ? 'chart-timeline-variant' : 'earth'} color={colors.primary} size={22} />
-          </View>
-          <Heading center>{tab === 'mine' ? (filter === 'all' ? 'No open positions' : 'Nothing in this category') : 'No public challenges live'}</Heading>
+          <Butterfingers mood={tab === 'mine' ? 'thinking' : 'idle'} size={110} />
+          <Heading center>{tab === 'mine' ? (filter === 'all' ? 'No bets yet' : 'Nothing in this category') : 'No public challenges live'}</Heading>
           <Muted center>{tab === 'mine' ? 'Start a challenge, join a friend with a code, or browse public challenges.' : 'Create a public challenge and anyone can take the other side.'}</Muted>
           <Row gap={space.sm}>
             <Button small title="New challenge" onPress={() => router.push('/create')} />
@@ -162,23 +164,26 @@ export default function Home() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <View accessible accessibilityLabel={`${label} ${value}`}>
-      <Text style={styles.statLabel}>{label}</Text>
+    <View accessible accessibilityLabel={`${label} ${value}`} style={styles.stat}>
       <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  wordmark: { fontFamily: fonts.display, fontSize: 18, letterSpacing: -0.4, color: colors.text },
-  balance: { fontFamily: fonts.display, fontSize: 40, lineHeight: 46, letterSpacing: -1.4, color: colors.text, fontVariant: ['tabular-nums'] },
-  unit: { fontFamily: fonts.bodyMedium, fontSize: 15, color: colors.textMuted },
-  statLabel: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted },
-  statValue: { fontFamily: fonts.bodySemi, fontSize: 15, color: colors.text, fontVariant: ['tabular-nums'] },
-  filter: { paddingHorizontal: 12, height: 30, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  filterOn: { backgroundColor: colors.text, borderColor: colors.text },
-  filterText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.textMuted },
-  empty: { alignItems: 'center', gap: space.sm, paddingVertical: space.xxl, paddingHorizontal: space.lg },
-  emptyIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', marginBottom: space.xs },
+  wordmark: { fontFamily: fonts.display, fontSize: 28, letterSpacing: 0.3, color: colors.text, textTransform: 'uppercase' },
+  hero: { borderRadius: radius.xl + 4, padding: space.xl, paddingRight: space.lg, overflow: 'hidden', gap: 2, minHeight: 190 },
+  mascot: { position: 'absolute', right: 6, top: 4 },
+  heroLabel: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.paperMuted, letterSpacing: 0.3, textTransform: 'uppercase' },
+  balance: { fontFamily: fonts.displayHeavy, fontSize: 76, lineHeight: 80, letterSpacing: 0.5, color: colors.paperText, fontVariant: ['tabular-nums'] },
+  unit: { fontFamily: fonts.displaySemi, fontSize: 18, color: colors.paperMuted },
+  stat: { backgroundColor: 'rgba(10,27,63,0.9)', borderRadius: radius.lg, paddingHorizontal: space.md, paddingVertical: space.sm, minWidth: 86 },
+  statLabel: { fontFamily: fonts.body, fontSize: 11, color: colors.primary },
+  statValue: { fontFamily: fonts.display, fontSize: 22, lineHeight: 24, letterSpacing: 0.3, color: colors.text, fontVariant: ['tabular-nums'] },
+  filter: { paddingHorizontal: 14, height: 34, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.borderHi, alignItems: 'center', justifyContent: 'center' },
+  filterOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  filterText: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.textMuted },
+  empty: { alignItems: 'center', gap: space.sm, paddingVertical: space.xl, paddingHorizontal: space.lg },
 });

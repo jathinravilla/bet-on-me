@@ -19,12 +19,12 @@ const TABS: Record<string, { label: string; icon: IconName; iconOn: IconName }> 
 function TabItem({ name, focused, onPress, badge }: { name: string; focused: boolean; onPress: () => void; badge?: number }) {
   const { me } = useAuth();
   const t = TABS[name];
-  const tint = focused ? colors.text : colors.textDim;
+  const tint = focused ? colors.primary : colors.textDim;
   return (
     <Pressable accessibilityRole="tab" accessibilityState={{ selected: focused }} accessibilityLabel={badge ? `${t.label}, ${badge} new` : t.label} onPress={onPress} style={styles.item}>
       <View>
         {name === 'profile' && me ? (
-          <View style={[styles.avatarRing, focused && { borderColor: colors.text }]}>
+          <View style={[styles.avatarRing, focused && { borderColor: colors.primary }]}>
             <Avatar username={me.username} avatar={me.avatar} size={22} />
           </View>
         ) : (
@@ -76,7 +76,7 @@ function TabBar({ state, navigateToTab, insets }: BottomTabBarProps) {
         }}
         style={({ pressed }) => [styles.item, pressed && { opacity: 0.7 }]}>
         <View style={styles.create}>
-          <Icon name="plus" color={colors.onPrimary} size={22} />
+          <Icon name="plus" color={colors.onAttention} size={22} />
         </View>
       </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="Join with a code" onPress={() => router.push('/join')} style={({ pressed }) => [styles.item, pressed && { opacity: 0.7 }]}>
@@ -103,10 +103,10 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
-  bar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'flex-start', paddingTop: 8, backgroundColor: 'rgba(10,23,48,0.98)', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  bar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'flex-start', paddingTop: 8, backgroundColor: '#071634', borderTopWidth: 1, borderTopColor: colors.hairline },
   item: { flex: 1, alignItems: 'center', gap: 3, minHeight: 44 },
   label: { fontFamily: fonts.bodyMedium, fontSize: 10.5 },
-  create: { width: 44, height: 32, borderRadius: radius.md, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  create: { width: 48, height: 34, borderRadius: radius.pill, backgroundColor: colors.attention, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
   avatarRing: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
   badge: { position: 'absolute', top: -3, right: -8, minWidth: 16, height: 16, paddingHorizontal: 4, borderRadius: 8, backgroundColor: colors.attention, alignItems: 'center', justifyContent: 'center' },
   badgeText: { color: colors.onAttention, fontFamily: fonts.bodySemi, fontSize: 9.5 },

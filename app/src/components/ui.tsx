@@ -44,14 +44,14 @@ const mk = (base: object, maxScale = 1.4) =>
   };
 
 const tnum = { fontVariant: ['tabular-nums'] as ('tabular-nums')[] };
-export const Display = mk({ fontFamily: fonts.display, fontSize: 32, lineHeight: 38, color: colors.text, letterSpacing: -0.8 }, 1.2);
-export const Title = mk({ fontFamily: fonts.display, fontSize: 24, lineHeight: 30, color: colors.text, letterSpacing: -0.5 }, 1.25);
+export const Display = mk({ fontFamily: fonts.display, fontSize: 44, lineHeight: 46, color: colors.text, letterSpacing: 0.2 }, 1.2);
+export const Title = mk({ fontFamily: fonts.display, fontSize: 32, lineHeight: 34, color: colors.text, letterSpacing: 0.2 }, 1.25);
 export const Heading = mk({ fontFamily: fonts.displaySemi, fontSize: 16, lineHeight: 22, color: colors.text, letterSpacing: -0.2 }, 1.3);
 export const Body = mk({ fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.text });
 export const BodyStrong = mk({ fontFamily: fonts.bodyMedium, fontSize: 15, lineHeight: 22, color: colors.text });
 export const Muted = mk({ fontFamily: fonts.body, fontSize: 13, lineHeight: 19, color: colors.textMuted });
 export const Label = mk({ fontFamily: fonts.bodyMedium, fontSize: 12, lineHeight: 16, color: colors.textMuted, letterSpacing: 0.1 }, 1.3);
-export const Money = mk({ fontFamily: fonts.display, fontSize: 30, lineHeight: 36, color: colors.text, letterSpacing: -0.8, ...tnum }, 1.2);
+export const Money = mk({ fontFamily: fonts.display, fontSize: 40, lineHeight: 42, color: colors.text, letterSpacing: 0.2, ...tnum }, 1.2);
 export const Num = mk({ fontFamily: fonts.bodySemi, fontSize: 15, lineHeight: 20, color: colors.text, ...tnum }, 1.3);
 
 // ---------- Layout ----------
@@ -160,7 +160,7 @@ type ButtonProps = {
 export function Button({ title, onPress, variant = 'primary', icon: iconName, loading, disabled, small, style, accessibilityHint }: ButtonProps) {
   const off = disabled || loading;
   const fg =
-    variant === 'primary' ? colors.onPrimary : variant === 'attention' ? colors.onAttention : variant === 'danger' ? colors.danger : variant === 'ghost' ? colors.primary : colors.text;
+    variant === 'primary' || variant === 'attention' ? colors.onAttention : variant === 'danger' ? colors.danger : variant === 'ghost' ? colors.primary : colors.text;
   return (
     <Pressable
       accessibilityRole="button"
@@ -351,30 +351,30 @@ const styles = StyleSheet.create({
   footer: { paddingHorizontal: space.lg, paddingTop: space.md, gap: space.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, backgroundColor: colors.bg },
   topBar: { flexDirection: 'row', alignItems: 'center', minHeight: 48, gap: space.sm },
   link: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.primary },
-  card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth * 2, borderColor: colors.border, padding: space.lg, gap: space.md },
-  button: { minHeight: 48, borderRadius: radius.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm, paddingHorizontal: space.lg },
-  buttonSmall: { minHeight: 36, paddingHorizontal: space.md, borderRadius: radius.sm + 2 },
-  buttonPrimary: { backgroundColor: colors.primary },
+  card: { backgroundColor: colors.surface, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.hairline, padding: space.lg, gap: space.md },
+  button: { minHeight: 50, borderRadius: radius.pill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm, paddingHorizontal: space.lg },
+  buttonSmall: { minHeight: 38, paddingHorizontal: space.lg, borderRadius: radius.pill },
+  buttonPrimary: { backgroundColor: colors.attention },
   buttonAttention: { backgroundColor: colors.attention },
-  buttonSecondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.borderHi },
+  buttonSecondary: { backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.borderHi },
   buttonDanger: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.danger },
-  buttonText: { fontFamily: fonts.bodySemi, fontSize: 15, letterSpacing: -0.1 },
+  buttonText: { fontFamily: fonts.bodySemi, fontSize: 15, letterSpacing: 0 },
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.4 },
   iconButton: { width: 40, height: 40, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, height: 22, borderRadius: radius.sm, alignSelf: 'flex-start' },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, height: 24, borderRadius: radius.pill, alignSelf: 'flex-start' },
   chipText: { fontFamily: fonts.bodyMedium, fontSize: 11.5, letterSpacing: 0.1 },
   segmented: { flexDirection: 'row', gap: space.xl, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   segment: { minHeight: 40, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6, borderBottomWidth: 2, borderBottomColor: 'transparent', marginBottom: -StyleSheet.hairlineWidth },
   segmentOn: { borderBottomColor: colors.primary },
   segmentText: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.textMuted },
-  choice: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.md, paddingVertical: space.md, minHeight: 64, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  choice: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.md, paddingVertical: space.md, minHeight: 64, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.hairline, backgroundColor: colors.surface },
   choiceOn: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   choiceIcon: { width: 36, height: 36, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceHi },
   radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: colors.borderHi, alignItems: 'center', justifyContent: 'center' },
   radioOn: { borderColor: colors.primary },
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
-  input: { minHeight: 48, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: space.md, color: colors.text, fontFamily: fonts.body, fontSize: 16 },
+  input: { minHeight: 52, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.borderHi, backgroundColor: colors.surface, paddingHorizontal: space.md, color: colors.text, fontFamily: fonts.body, fontSize: 16 },
   banner: { flexDirection: 'row', gap: space.sm, alignItems: 'flex-start', paddingHorizontal: space.md, paddingVertical: space.sm + 2, borderRadius: radius.md },
   track: { height: 4, borderRadius: radius.pill, backgroundColor: colors.surfaceHi, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: radius.pill },

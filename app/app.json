@@ -21,7 +21,11 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -50,6 +54,23 @@
       "typedRoutes": false,
       "reactCompiler": true
     },
-    "backgroundColor": "#0B0B0D"
+    "backgroundColor": "#0B0B0D",
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "76f93af2-6cf4-4366-b31b-587bb7acc32d"
+      }
+    },
+    "owner": "jathinravilla",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/76f93af2-6cf4-4366-b31b-587bb7acc32d"
+    }
   }
 }

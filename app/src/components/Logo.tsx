@@ -10,7 +10,7 @@ export function Logo({ size = 40, wordmark = true }: { size?: number; wordmark?:
       <View style={[styles.mark, { width: size, height: size, borderRadius: size * 0.28 }]}>
         <Icon name="trending-up" color={colors.onPrimary} size={size * 0.6} />
       </View>
-      {wordmark ? <Text style={[styles.word, { fontSize: size * 0.55 }]}>Bet on me</Text> : null}
+      {wordmark ? <Text style={[styles.word, { fontSize: size * 0.7 }]}>Bet on me</Text> : null}
     </View>
   );
 }
@@ -18,5 +18,5 @@ export function Logo({ size = 40, wordmark = true }: { size?: number; wordmark?:
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   mark: { backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  word: { fontFamily: fonts.display, letterSpacing: -0.6, color: colors.text },
+  word: { fontFamily: fonts.display, letterSpacing: 0.3, color: colors.text },
 });

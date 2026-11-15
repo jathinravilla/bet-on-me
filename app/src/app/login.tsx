@@ -3,11 +3,12 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
-import { Logo } from '@/components/Logo';
-import { Button, DevnetTag, Field, Icon, Muted, Screen, Title } from '@/components/ui';
+import { Butterfingers } from '@/components/Butterfingers';
+import { Gradient } from '@/components/fx';
+import { Button, DevnetTag, Field, Icon, Muted, Screen } from '@/components/ui';
 import { errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { colors, fonts, space } from '@/lib/theme';
+import { colors, fonts, gradients, radius, space } from '@/lib/theme';
 
 const POINTS = [
   { icon: 'shield-check-outline', text: 'Proof is verified automatically — Strava, chess.com, or video.' },
@@ -40,13 +41,16 @@ export default function Login() {
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen>
         <Animated.View entering={FadeIn.duration(400)} style={styles.top}>
-          <Logo size={36} />
-          <View style={{ gap: space.sm }}>
-            <Title accessibilityRole="header" style={styles.headline}>
-              Put stakes on your goals.
-            </Title>
-            <Muted style={{ fontSize: 15, lineHeight: 22 }}>Challenge yourself and your friends. Hit the goal, take the pot.</Muted>
-          </View>
+          <Gradient colors={gradients.hero} style={styles.hero}>
+            <View style={styles.mascot} pointerEvents="none">
+              <Butterfingers mood="celebrate" size={150} />
+            </View>
+            <Text style={styles.brand}>Bet on me</Text>
+            <Text accessibilityRole="header" style={styles.headline}>
+              Put your money where your goals are.
+            </Text>
+          </Gradient>
+          <Muted style={{ fontSize: 15, lineHeight: 22 }}>Challenge yourself and your friends. Hit the goal, take the pot.</Muted>
           <View style={styles.points}>
             {POINTS.map((p) => (
               <View key={p.text} style={styles.point}>
@@ -88,8 +92,11 @@ export default function Login() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.bg },
-  top: { gap: space.xl, paddingTop: space.xxl },
-  headline: { fontSize: 30, lineHeight: 36, letterSpacing: -0.9 },
+  top: { gap: space.lg, paddingTop: space.md },
+  hero: { borderRadius: radius.xl + 6, padding: space.xl, minHeight: 270, overflow: 'hidden', justifyContent: 'space-between' },
+  mascot: { position: 'absolute', right: -8, bottom: -10 },
+  brand: { fontFamily: fonts.display, fontSize: 22, letterSpacing: 0.4, color: colors.paperText, textTransform: 'uppercase' },
+  headline: { fontFamily: fonts.displayHeavy, fontSize: 46, lineHeight: 46, letterSpacing: 0.2, color: colors.paperText, textTransform: 'uppercase', maxWidth: '72%' },
   points: { gap: space.md, paddingVertical: space.sm },
   point: { flexDirection: 'row', gap: space.md, alignItems: 'flex-start' },
   pointText: { flex: 1, fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: colors.textMuted },

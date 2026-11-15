@@ -138,6 +138,6 @@ const styles = StyleSheet.create({
   hero: { gap: space.md, alignItems: 'center', paddingVertical: space.md },
   stats: { flexDirection: 'row', alignSelf: 'stretch', borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border, paddingVertical: space.md },
   stat: { flex: 1, alignItems: 'center', gap: 2 },
-  statValue: { fontFamily: fonts.display, fontSize: 18, letterSpacing: -0.4, color: colors.text, fontVariant: ['tabular-nums'] },
+  statValue: { fontFamily: fonts.display, fontSize: 23, letterSpacing: 0.3, color: colors.text, fontVariant: ['tabular-nums'] },
   statLabel: { fontFamily: fonts.body, fontSize: 11.5, color: colors.textMuted },
 });

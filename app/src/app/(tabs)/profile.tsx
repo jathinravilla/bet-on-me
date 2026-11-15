@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
   tabular: { fontVariant: ['tabular-nums'] },
   stats: { flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border, paddingVertical: space.md },
   stat: { gap: 2 },
-  statValue: { fontFamily: fonts.display, fontSize: 18, letterSpacing: -0.4, fontVariant: ['tabular-nums'] },
+  statValue: { fontFamily: fonts.display, fontSize: 23, letterSpacing: 0.3, fontVariant: ['tabular-nums'] },
   statLabel: { fontFamily: fonts.body, fontSize: 11.5, color: colors.textMuted },
   appIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceHi, borderWidth: 1, borderColor: colors.border },
   grid: { gap: 0 },
