@@ -64,6 +64,7 @@ export function Squish({
   accessibilityRole = 'button',
   haptic = true,
   disabled,
+  selected,
 }: {
   children: ReactNode;
   onPress?: () => void;
@@ -73,6 +74,7 @@ export function Squish({
   accessibilityRole?: 'button' | 'link' | 'radio' | 'checkbox';
   haptic?: boolean;
   disabled?: boolean;
+  selected?: boolean;
 }) {
   const s = useSharedValue(1);
   const a = useAnimatedStyle(() => ({ transform: [{ scale: s.value }] }));
@@ -82,7 +84,7 @@ export function Squish({
       accessibilityRole={accessibilityRole}
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={accessibilityHint}
-      accessibilityState={{ disabled: !!disabled }}
+      accessibilityState={{ disabled: !!disabled, selected }}
       disabled={disabled}
       onPressIn={() => s.set(withTiming(0.985, { duration: 90 }))}
       onPressOut={() => s.set(withTiming(1, { duration: 140 }))}

@@ -16,6 +16,7 @@ export interface UserDoc {
   wallet: WalletDoc;
   fundState: "none" | "pending" | "done";
   points: number;
+  hiddenChallenges?: string[]; // challenge ids this user chose to hide from their own home feed (cosmetic only)
   chessUsername?: string;
   githubUsername?: string;
   duolingoUsername?: string;

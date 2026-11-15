@@ -522,3 +522,36 @@ test("search finds public bets only; coach degrades gracefully without Gemini", 
   const advice = await call("POST", "/coach", b.token, { category: "strava", mode: "target", title: "Run it", target: 5, durationMinutes: 10080 });
   assert.equal(advice.status, 502); // a clear message, not a crash
 });
+
+test("hiding a bet only changes your own home feed", async () => {
+  const a = await login("hana");
+  const b = await login("hugo");
+  const ch = (await call<ChallengeView>("POST", "/challenges", a.token, strava({ visibility: "public", title: "Hide me if you like" }))).data;
+  assert.equal(ch.hidden, false);
+
+  const hide = await call<{ hidden: boolean }>("POST", `/challenges/${ch.id}/hide`, a.token, { hidden: true });
+  assert.equal(hide.status, 200);
+  assert.equal(hide.data.hidden, true);
+  const mine = (await call<ChallengeView[]>("GET", "/challenges/mine", a.token)).data;
+  assert.equal(mine.find((c) => c.id === ch.id)?.hidden, true);
+  // Hiding twice is harmless, and the money side is untouched.
+  assert.equal((await call("POST", `/challenges/${ch.id}/hide`, a.token, { hidden: true })).status, 200);
+  assert.equal(mine.find((c) => c.id === ch.id)?.status, "active");
+  assert.equal(mine.find((c) => c.id === ch.id)?.potLamports, ch.potLamports);
+
+  // Other people still see it.
+  const pub = (await call<ChallengeView[]>("GET", "/challenges?visibility=public", b.token)).data;
+  assert.equal(pub.find((c) => c.id === ch.id)?.hidden, false);
+
+  // You can hide a public bet you only browse, and bring it back.
+  assert.equal((await call("POST", `/challenges/${ch.id}/hide`, b.token, { hidden: true })).status, 200);
+  assert.equal((await call<ChallengeView[]>("GET", "/challenges?visibility=public", b.token)).data.find((c) => c.id === ch.id)?.hidden, true);
+  assert.equal((await call("POST", `/challenges/${ch.id}/hide`, b.token, { hidden: false })).status, 200);
+  assert.equal((await call<ChallengeView[]>("GET", "/challenges?visibility=public", b.token)).data.find((c) => c.id === ch.id)?.hidden, false);
+
+  // A friends-only bet you can't see can't be hidden (and its existence isn't leaked); bad input is refused.
+  const secret = (await call<ChallengeView>("POST", "/challenges", a.token, strava({ visibility: "friends", title: "Private plans" }))).data;
+  assert.equal((await call("POST", `/challenges/${secret.id}/hide`, b.token, { hidden: true })).status, 404);
+  assert.equal((await call("POST", `/challenges/${ch.id}/hide`, a.token, { hidden: "yes" })).status, 400);
+  assert.equal((await call("POST", `/challenges/${ch.id}/hide`)).status, 401);
+});

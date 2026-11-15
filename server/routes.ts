@@ -467,6 +467,26 @@ async function listPublic(ctx: Ctx) {
   return Promise.all([...live, ...done].map((c) => toView(c, ctx.user)));
 }
 
+const MAX_HIDDEN = 500;
+
+/** Hide or unhide a challenge on the caller's own home feed. Purely cosmetic: stakes, results and other players are untouched. */
+async function setHidden(ctx: Ctx) {
+  const uid = uidOf(ctx.user);
+  await rateLimit(`hide:${uid}`, 60, 60);
+  const ch = await getChallenge(objectIdStr(ctx.params.id, "Challenge id"));
+  assertCanView(ch, ctx.user);
+  if (typeof ctx.body.hidden !== "boolean") throw new HttpError(400, "Say whether to hide or show it.");
+  const id = ch._id.toHexString();
+  const { users } = await cols();
+  if (ctx.body.hidden) {
+    if ((ctx.user.hiddenChallenges?.length ?? 0) >= MAX_HIDDEN && !ctx.user.hiddenChallenges?.includes(id)) throw new HttpError(409, "You've hidden a lot of bets. Show a few again before hiding more.");
+    await users.updateOne({ _id: ctx.user._id }, { $addToSet: { hiddenChallenges: id } });
+  } else {
+    await users.updateOne({ _id: ctx.user._id }, { $pull: { hiddenChallenges: id } });
+  }
+  return { id, hidden: ctx.body.hidden };
+}
+
 async function searchChallenges(ctx: Ctx) {
   await rateLimit(`search:${uidOf(ctx.user)}`, 60, 60);
   const q = (ctx.query.get("q") ?? "").trim().slice(0, 60);
@@ -943,6 +963,7 @@ export const routes: Route[] = [
   { method: "POST", pattern: "/challenges", auth: true, handler: createChallenge },
   { method: "GET", pattern: "/challenges", auth: true, handler: listPublic },
   { method: "GET", pattern: "/challenges/mine", auth: true, handler: listMine },
+  { method: "POST", pattern: "/challenges/:id/hide", auth: true, handler: setHidden },
   { method: "GET", pattern: "/challenges/search", auth: true, handler: searchChallenges },
   { method: "POST", pattern: "/coach", auth: true, handler: coach },
   { method: "GET", pattern: "/dare/ideas", auth: true, handler: dareIdeasRoute },

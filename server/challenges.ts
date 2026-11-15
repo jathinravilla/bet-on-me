@@ -61,6 +61,7 @@ export async function toView(ch: ChallengeDoc, me: UserDoc, withProofs = false):
   const avatars = await participantAvatars(board.map((p) => p.userId));
   const view: ChallengeView = {
     id: ch._id.toHexString(),
+    hidden: me.hiddenChallenges?.includes(ch._id.toHexString()) ?? false,
     title: ch.title,
     description: ch.description,
     category: ch.category,

@@ -71,3 +71,11 @@ export const explorerTx = (sig: string) => `https://explorer.solana.com/tx/${sig
 export const explorerAddress = (a: string) => `https://explorer.solana.com/address/${a}?cluster=devnet`;
 export const isRealSig = (sig?: string | null): sig is string => !!sig && sig !== 'pending' && !sig.startsWith('MOCK');
 export const shortKey = (k: string) => `${k.slice(0, 4)}…${k.slice(-4)}`;
+
+export type Bucket = 'current' | 'finished' | 'closed';
+/** Which Home tab a challenge belongs in: still running, finished with a winner, or closed (refunded or removed). */
+export function bucketOf(c: ChallengeView): Bucket {
+  if (c.status === 'banned') return 'closed';
+  if (c.status === 'settled') return c.settlement?.outcome === 'refund' ? 'closed' : 'finished';
+  return 'current';
+}

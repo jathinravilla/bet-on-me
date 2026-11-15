@@ -242,7 +242,7 @@ export function Butterfingers({ mood = 'idle', size = 180 }: { mood?: Mood; size
     };
   }, [mood, still, bob, tilt, a, sweat, slide, lie]);
 
-  const slipX = (slide: number) => (mood === 'slip' ? (slide * 34 - 24) * u : 0);
+  const slipX = (slide: number) => (mood === 'slip' ? (slide * 28 - 4) * u : 0);
   const shadowStyle = useAnimatedStyle(() => ({ transform: [{ translateX: slipX(slide.value) }, { scaleX: mood === 'slip' ? 1 - bob.value * 0.2 + lie.value * 0.35 : 1 }] }));
   const bodyStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: slipX(slide.value) }, { translateY: (-bob.value * (mood === 'celebrate' ? 16 : mood === 'slip' ? 14 : 5) + lie.value * 24) * u + (mood === 'fumble' ? 8 * u : 0) }, { rotate: `${tilt.value}deg` }],
@@ -257,7 +257,7 @@ export function Butterfingers({ mood = 'idle', size = 180 }: { mood?: Mood; size
       return { transform: [{ translateX: (132 + a.value * 34) * u }, { translateY: (150 - bounce) * u }, { rotate: `${a.value * 540}deg` }] };
     }
     const jitter = mood === 'nervous' ? 7 : 3;
-    return { transform: [{ translateX: (146 + (mood === 'slip' ? slide.value * 34 - 24 : 0)) * u }, { translateY: (58 - a.value * jitter - bob.value * (mood === 'slip' ? 16 : 5)) * u }, { rotate: `${(a.value - 0.5) * (mood === 'nervous' ? 26 : 14)}deg` }] };
+    return { transform: [{ translateX: (146 + (mood === 'slip' ? slide.value * 28 - 4 : 0)) * u }, { translateY: (58 - a.value * jitter - bob.value * (mood === 'slip' ? 16 : 5)) * u }, { rotate: `${(a.value - 0.5) * (mood === 'nervous' ? 26 : 14)}deg` }] };
   });
 
   const starA = useAnimatedStyle(() => ({ opacity: lie.value, transform: [{ translateX: (slipX(slide.value) + 70 + Math.cos(a.value * Math.PI) * 12) * u }, { translateY: (70 - Math.sin(a.value * Math.PI) * 6) * u }, { rotate: `${a.value * 180}deg` }] }));

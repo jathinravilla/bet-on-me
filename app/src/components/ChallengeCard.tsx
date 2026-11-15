@@ -26,12 +26,15 @@ export function ChallengeCard({
   now,
   onPress,
   onVote,
+  onMore,
   highlight,
 }: {
   c: ChallengeView;
   now: number;
   onPress: () => void;
   onVote?: (v: 1 | -1 | 0) => void;
+  /** Opens the card's menu (hide / show on my home). */
+  onMore?: () => void;
   /** e.g. "maya & leo in" on the Squad board */
   highlight?: string;
 }) {
@@ -47,7 +50,7 @@ export function ChallengeCard({
     <Squish
       accessibilityLabel={`${c.title}. ${meta.label}. Pot ${coins(c.potLamports)} coins. ${players} players. ${when}. ${pct}% on track.`}
       onPress={onPress}
-      style={[styles.card, (hot || toRate) && { borderColor: colors.attention, borderWidth: 2 }]}>
+      style={[styles.card, c.hidden && { opacity: 0.6 }, (hot || toRate) && { borderColor: colors.attention, borderWidth: 2 }]}>
       <Row gap={space.md} style={{ alignItems: 'flex-start' }}>
         <CategoryMark category={c.category} />
         <View style={styles.flex}>
@@ -56,6 +59,7 @@ export function ChallengeCard({
             <Text style={[styles.meta, hot && { color: '#8A6100' }]} numberOfLines={1}>
               {meta.label} · {when}
             </Text>
+            {c.hidden ? <Chip text="Hidden" icon="eye-off-outline" /> : null}
           </Row>
           <Text numberOfLines={2} style={styles.title}>
             {c.title}
@@ -109,6 +113,7 @@ export function ChallengeCard({
         <Row gap={6}>
           {highlight ? <Text numberOfLines={1} style={styles.sub}>{highlight}</Text> : null}
           <AvatarStack people={c.participants} size={22} max={3} />
+          {onMore ? <IconButton name="dots-horizontal" label={`More options for ${c.title}`} color={colors.paperMuted} onPress={onMore} /> : null}
         </Row>
       </Row>
 

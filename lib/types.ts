@@ -57,6 +57,8 @@ export interface ProofView {
 
 export interface ChallengeView {
   id: string;
+  /** True if the signed-in user hid this from their own home feed. Hiding never changes stakes or results. */
+  hidden?: boolean;
   title: string;
   description: string;
   category: Category;
