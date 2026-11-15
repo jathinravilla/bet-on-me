@@ -29,8 +29,8 @@ import { inviteCode, livenessWord, randomToken, safeEqual, sha256 } from "./cryp
 import { cols, rateLimit, type ChallengeDoc, type DareProofDoc, type UserDoc } from "./db";
 import { DEMO_MODE, MAX_USERS, SOLANA_MOCK, STRAVA_DEMO, need } from "./env";
 import { CHESS_USERNAME, chessPlayerExists, chessRating, stravaAuthorizeUrl, stravaExchange } from "./external";
-import { judgeDareVideo, screenDare } from "./gemini";
-import { LOCAL_MEDIA, localUpload, localVideoPath, originOf, readLocalVideo, serveLocalVideo } from "./localmedia";
+import { dareIdeas, judgeDareVideo, screenDare } from "./gemini";
+import { LOCAL_MEDIA, VIDEO_EXTS, extOf, localUpload, mimeOf, localVideoPath, originOf, readLocalVideo, serveLocalVideo } from "./localmedia";
 import { HttpError, num, objectIdStr, oneOf, optStr, str, type Ctx, type Route } from "./http";
 import {
   avatarOf,
@@ -426,6 +426,11 @@ async function commentary(ctx: Ctx) {
   return { commentary: await commentaryFor(ch) };
 }
 
+async function dareIdeasRoute(ctx: Ctx) {
+  await rateLimit(`dareideas:${uidOf(ctx.user)}`, 30, 3600);
+  return dareIdeas(5);
+}
+
 async function listMine(ctx: Ctx) {
   const { challenges } = await cols();
   const uid = uidOf(ctx.user);
@@ -655,8 +660,8 @@ async function dareUploadToken(ctx: Ctx): Promise<UploadTokenResponse> {
   const proof = await myProof(ctx);
   if (proof.gemini || proof.uploadPath) throw new HttpError(409, "This proof already has a video. Start a new one.");
   if (Date.now() - proof.wordIssuedAt.getTime() > WORD_TTL_MS + VERIFY_GRACE_MS) throw new HttpError(410, "That liveness word expired. Tap Record proof again.");
-  const ext = oneOf(ctx.body.ext ?? "mov", "File type", ["mov", "mp4"] as const);
-  const contentType = ext === "mov" ? "video/quicktime" : "video/mp4";
+  const ext = oneOf(ctx.body.ext ?? "mov", "File type", VIDEO_EXTS);
+  const contentType = mimeOf(ext);
   if (LOCAL_MEDIA()) {
     // Local dev without Vercel Blob: upload straight to this server with a one-time key.
     const key = randomToken(24);
@@ -707,7 +712,7 @@ async function dareVerify(ctx: Ctx): Promise<DareVerifyResponse> {
   let video: Buffer;
   if (LOCAL_MEDIA() && proof.uploadPath.startsWith("local/")) {
     // Local file: the URL must point at exactly this proof's file; we read it from disk, never fetch it.
-    const ext = proof.uploadPath.endsWith(".mov") ? "mov" : "mp4";
+    const ext = extOf(proof.uploadPath);
     if (url.pathname !== localVideoPath(proof._id.toHexString(), ext) || url.search || url.username) throw new HttpError(400, "Invalid video URL.");
     video = await readLocalVideo(proof._id.toHexString(), ext);
   } else {
@@ -729,7 +734,7 @@ async function dareVerify(ctx: Ctx): Promise<DareVerifyResponse> {
   try {
     result = await judgeDareVideo({
       video,
-      mimeType: proof.uploadPath.endsWith(".mov") ? "video/quicktime" : "video/mp4",
+      mimeType: mimeOf(extOf(proof.uploadPath)),
       dareText: `${ch.title}. ${ch.dareText ?? ""}`,
       word: proof.livenessWord,
     });
@@ -856,6 +861,7 @@ export const routes: Route[] = [
   { method: "GET", pattern: "/challenges/mine", auth: true, handler: listMine },
   { method: "GET", pattern: "/challenges/search", auth: true, handler: searchChallenges },
   { method: "POST", pattern: "/coach", auth: true, handler: coach },
+  { method: "GET", pattern: "/dare/ideas", auth: true, handler: dareIdeasRoute },
   { method: "GET", pattern: "/challenges/:id/similar", auth: true, handler: similarChallenges },
   { method: "GET", pattern: "/challenges/:id/commentary", auth: true, handler: commentary },
   { method: "POST", pattern: "/challenges/join", auth: true, handler: join },

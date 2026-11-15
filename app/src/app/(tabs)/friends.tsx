@@ -112,13 +112,16 @@ export default function Friends() {
   useEffect(() => {
     const term = q.trim().toLowerCase();
     const t = setTimeout(() => {
-      if (term.length < 2) return setResults(null);
-      api<UserSummary[]>(`/users/search?q=${encodeURIComponent(term)}`)
+      if (term.length < 1) return setResults(null);
+      api<UserSummary[]>(`/users/search?q=${encodeURIComponent(term.replace(/^@/, ''))}`)
         .then(setResults)
-        .catch(() => setResults([]));
-    }, term.length < 2 ? 0 : 250);
+        .catch((e) => {
+          setResults(null);
+          toast(errorMessage(e), 'danger');
+        });
+    }, term.length < 1 ? 0 : 250);
     return () => clearTimeout(t);
-  }, [q]);
+  }, [q, toast]);
 
   if (!me) return null;
 
@@ -191,10 +194,10 @@ export default function Friends() {
         label="Find friends"
         value={q}
         onChangeText={setQ}
-        placeholder="Search by username"
+        placeholder="Search by username or name"
         autoCapitalize="none"
         autoCorrect={false}
-        maxLength={16}
+        maxLength={24}
         returnKeyType="search"
         hint="Add friends to see their bets, back them, and team up on challenges."
       />
@@ -202,7 +205,7 @@ export default function Friends() {
       {results ? (
         <Card>
           <Label>Players</Label>
-          {results.length === 0 ? <Muted>No one called “{q.trim()}” yet. Tell them to sign up!</Muted> : null}
+          {results.length === 0 ? <Muted>No one matches “{q.trim()}” yet. Check the spelling, or tell them to sign up!</Muted> : null}
           {results.map((u) => (
             <PersonRow key={u.id} u={u} right={relationButton(u)} />
           ))}

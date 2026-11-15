@@ -57,6 +57,29 @@ function parse<T>(text: string | undefined): T {
   return JSON.parse(text) as T;
 }
 
+/** Speech-to-text isn't perfect: accept the word with a plural/ending, or one letter off for longer words. */
+export function wordHeard(transcript: string, word: string): boolean {
+  const w = word.toLowerCase().replace(/[^a-z]/g, "");
+  if (w.length < 3) return false;
+  const lev = (a: string, b: string) => {
+    const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array<number>(b.length).fill(0)]);
+    for (let j = 1; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) {
+        d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1); // swapped neighbours
+      }
+    }
+    return d[a.length][b.length];
+  };
+  return transcript
+    .toLowerCase()
+    .replace(/[^a-z ]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .some((t) => t === w || (t.length > w.length && t.startsWith(w) && t.length - w.length <= 3) || (w.length >= 5 && t.length >= 4 && lev(t, w) <= 1));
+}
+
 const clip = (s: unknown, max = 240) => (typeof s === "string" ? s.replace(/\s+/g, " ").trim().slice(0, max) : "");
 
 // Local fallback when there's no Gemini key: block obvious guideline breaks by keyword, allow the rest.
@@ -155,8 +178,7 @@ export async function judgeDareVideo(args: {
       52_000
     );
     const out = parse<{ transcript: unknown; dareDone: unknown; reason: unknown }>(r.text);
-    const heard = typeof out.transcript === "string" ? out.transcript.toLowerCase().replace(/[^a-z ]/g, " ") : "";
-    const wordSaid = heard.split(/\s+/).includes(args.word.toLowerCase());
+    const wordSaid = wordHeard(typeof out.transcript === "string" ? out.transcript : "", args.word);
     const reason = clip(out.reason, 160) || "No reason given.";
     if (out.dareDone === "yes" && wordSaid) return { verdict: "pass", reason: `${reason} Heard the word "${args.word}".` };
     if (out.dareDone === "no") return { verdict: "fail", reason };
@@ -269,4 +291,65 @@ export async function commentate(args: { title: string; outcome: "refund" | "spl
   }, 10_000, 24_000);
   const out = parse<{ winner: unknown; loser: unknown }>(r.text);
   return { winner: clip(out.winner, 120) || "Butter believe it. Nice work!", loser: clip(out.loser, 120) || "Slippery one. Try again next round!" };
+}
+
+
+// ---------- Dare ideas ----------
+
+export interface DareIdea {
+  title: string;
+  dare: string;
+}
+
+/** Hand-written fallbacks, so "Surprise me" works even if Gemini is slow. All safe, funny and doable in 15 seconds. */
+export const CURATED_DARES: DareIdea[] = [
+  { title: "Moonwalk across the room", dare: "Moonwalk across a room, from one wall to the other, without turning around, on camera." },
+  { title: "Cup stack speedrun", dare: "Stack 6 cups into a pyramid and knock them down, then say the word, all within 15 seconds." },
+  { title: "Spoon on the nose", dare: "Balance a spoon on your nose for 10 seconds without touching it, on camera." },
+  { title: "Fake news anchor", dare: "Read the back of any cereal box like a serious breaking-news anchor for 10 seconds." },
+  { title: "Alphabet backwards", dare: "Say the alphabet backwards from Z to M without stopping, on camera." },
+  { title: "Dramatic sandwich", dare: "Narrate making a sandwich like a nature documentary, with a whispering voice, for 15 seconds." },
+  { title: "Dance in your socks", dare: "Do a 15 second freestyle dance in your socks, with a big smile the whole time." },
+  { title: "Chopstick treasure", dare: "Move 5 small items from one bowl to another using only chopsticks or a fork, on camera." },
+  { title: "Accent switch", dare: "Introduce yourself and your favorite food in a fake pirate accent, staying in character the whole time." },
+  { title: "Plank and sing", dare: "Hold a plank for 20 seconds while singing the happy birthday song out loud." },
+  { title: "Opposite hand drawing", dare: "Draw a recognizable cat using only your non-writing hand and show it to the camera." },
+  { title: "Trick shot toss", dare: "Toss a crumpled paper ball into a bin from across the room in 3 tries or fewer, on camera." },
+  { title: "Statue mode", dare: "Freeze like a statue in a funny pose for 10 seconds without blinking or laughing." },
+  { title: "Rhyme battle", dare: "Make up a 4 line rhyme about your day, out loud, with confidence." },
+  { title: "Blind high five", dare: "Close your eyes and touch your nose with both index fingers 5 times in a row, on camera." },
+  { title: "Tongue twister", dare: "Say 'she sells seashells by the seashore' three times fast with no mistakes." },
+  { title: "Mirror hype speech", dare: "Give a 15 second hype speech to yourself in a mirror like a coach before the big game." },
+  { title: "Reverse walk", dare: "Walk backwards through a doorway and back again with eyes closed, slowly, on camera." },
+];
+
+const shuffle = <T,>(a: T[]) => [...a].sort(() => Math.random() - 0.5);
+
+export async function dareIdeas(n = 5): Promise<{ ideas: DareIdea[]; source: "gemini" | "curated" }> {
+  try {
+    const r = await generate(textModels(), {
+      contents: [{ role: "user", parts: [{ text: `Invent ${n} fresh dares. Vary them: some physical-but-safe, some silly, some skill-based. Seed: ${Math.random().toString(36).slice(2, 8)}` }] }],
+      config: {
+        temperature: 1,
+        systemInstruction:
+          "You write dares for a friendly college-student app where the proof is a single 15-second selfie video. " +
+          `Rules: ${GUIDELINES} Each dare must be doable at home with common objects, in under 15 seconds, and be obviously checkable from the video ` +
+          "(say exactly what must be seen or heard). title: max 5 words. dare: max 150 characters, imperative voice, no emoji.",
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: { type: Type.OBJECT, properties: { title: { type: Type.STRING }, dare: { type: Type.STRING } }, required: ["title", "dare"], propertyOrdering: ["title", "dare"] },
+        },
+      },
+    }, 10_000, 16_000);
+    const raw = parse<{ title: unknown; dare: unknown }[]>(r.text);
+    const ideas = raw
+      .map((i) => ({ title: clip(i.title, 40), dare: clip(i.dare, 160) }))
+      .filter((i) => i.title.length >= 3 && i.dare.length >= 10)
+      .slice(0, n);
+    if (ideas.length >= 3) return { ideas, source: "gemini" };
+  } catch (e) {
+    console.error("dare ideas failed:", e instanceof Error ? e.message : e);
+  }
+  return { ideas: shuffle(CURATED_DARES).slice(0, n), source: "curated" };
 }

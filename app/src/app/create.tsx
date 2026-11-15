@@ -7,6 +7,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import type { Category, ChallengeView, ChessTimeControl, CreateChallengeBody, FriendsView, MeView, Mode, Visibility } from '../../../lib/types';
 import { Butterfingers } from '@/components/Butterfingers';
 import { CoachCard } from '@/components/CoachCard';
+import { DareIdeas } from '@/components/DareIdeas';
 import { Avatar, CategoryMark, Squish, useToast } from '@/components/fx';
 import { Logo } from '@/components/Logo';
 import { Banner, Body, BodyStrong, Button, Card, Chip, Choice, Field, Heading, Icon, Label, Money, Muted, Row, Screen, Segmented, Title, TopBar, type IconName } from '@/components/ui';
@@ -56,6 +57,14 @@ const TEMPLATES: Template[] = [
   { key: 'climb', title: 'Blitz climb', blurb: 'Biggest blitz rating gain wins', icon: 'trending-up', category: 'chess', mode: 'open', tc: 'blitz', minutes: 10080 },
   { key: 'cold', title: 'Cold shower dare', blurb: '60 seconds, ice cold, on camera', icon: 'snowflake', category: 'dare', mode: 'target', dare: 'Take a 60 second ice-cold shower (film your face and the water, keep it PG).', minutes: 1440 },
   { key: 'pushups', title: '50 push-up dare', blurb: '50 in one set, on video', icon: 'arm-flex', category: 'dare', mode: 'target', dare: 'Do 50 push-ups in one set without stopping, counting out loud on camera.', minutes: 2880 },
+  { key: 'moonwalk', title: 'Moonwalk across the room', blurb: 'Wall to wall, no turning', icon: 'shoe-print', category: 'dare', mode: 'target', dare: 'Moonwalk across a room from one wall to the other without turning around, on camera.', minutes: 1440 },
+  { key: 'cups', title: 'Cup stack speedrun', blurb: '6 cups, one pyramid, 15 seconds', icon: 'cup-water', category: 'dare', mode: 'target', dare: 'Stack 6 cups into a pyramid and knock it down, all within 15 seconds, on camera.', minutes: 1440 },
+  { key: 'spoon', title: 'Spoon on the nose', blurb: 'Balance it for 10 seconds', icon: 'silverware-spoon', category: 'dare', mode: 'target', dare: 'Balance a spoon on your nose for 10 seconds without touching it, on camera.', minutes: 1440 },
+  { key: 'anchor', title: 'Fake news anchor', blurb: 'Read a cereal box, very seriously', icon: 'newspaper-variant-outline', category: 'dare', mode: 'target', dare: 'Read the back of any cereal box like a serious breaking-news anchor for 10 seconds.', minutes: 1440 },
+  { key: 'dance', title: 'Sock dance party', blurb: '15 seconds, no stopping', icon: 'music-note', category: 'dare', mode: 'target', dare: 'Do a 15 second freestyle dance in your socks with a big smile the whole time.', minutes: 1440 },
+  { key: 'twister', title: 'Tongue twister', blurb: 'Seashells, three times fast', icon: 'microphone-variant', category: 'dare', mode: 'target', dare: "Say 'she sells seashells by the seashore' three times fast with no mistakes, on camera.", minutes: 1440 },
+  { key: 'statue', title: 'Statue mode', blurb: 'Freeze 10 seconds, no laughing', icon: 'human-handsup', category: 'dare', mode: 'target', dare: 'Freeze like a statue in a funny pose for 10 seconds without blinking or laughing, on camera.', minutes: 1440 },
+  { key: 'hype', title: 'Mirror hype speech', blurb: 'Coach yourself like a champ', icon: 'bullhorn-outline', category: 'dare', mode: 'target', dare: 'Give a 15 second hype speech to yourself in a mirror, like a coach before the big game.', minutes: 1440 },
   { key: 'sing', title: 'Karaoke solo', blurb: 'Sing a full chorus at home', icon: 'microphone-variant', category: 'dare', mode: 'target', dare: 'Sing a full chorus of a song of your choice, loudly and with feeling, on camera at home.', minutes: 1440 },
 ];
 
@@ -338,6 +347,14 @@ export default function Create() {
           <>
             <Title>Dream it up</Title>
             <Muted>Anything you want to hold yourself to. Then choose how the app checks it — the proof is what makes the money fair.</Muted>
+            {source === 'video' ? (
+              <DareIdeas
+                onPick={(i) => {
+                  setTitle(i.title);
+                  setGoal(i.dare);
+                }}
+              />
+            ) : null}
             <Field label="Challenge name" value={title} onChangeText={setTitle} maxLength={60} placeholder="Read 3 books in March" />
             <Field label="The goal" value={goal} onChangeText={setGoal} maxLength={source === 'video' ? 200 : 280} multiline placeholder="Finish 3 books and film a 15s recap of each one." hint={`${goal.length}/${source === 'video' ? 200 : 280} · Be specific so nobody can argue about it.`} />
             <View style={{ gap: space.md }} accessibilityRole="radiogroup">
@@ -449,6 +466,12 @@ export default function Create() {
             {category !== 'dare' && effectiveMode === 'open' ? <Banner tone="info" text={category === 'chess' ? 'Most rating points gained from now until the end wins the whole pot.' : 'Most GPS-recorded miles between now and the end wins the whole pot.'} /> : null}
             {category === 'dare' ? (
               <>
+                <DareIdeas
+                  onPick={(i) => {
+                    setTitle(i.title);
+                    setDareText(i.dare);
+                  }}
+                />
                 <Field label="The dare" value={dareText} onChangeText={setDareText} multiline maxLength={200} placeholder="Order a coffee using only song lyrics" hint={`${dareText.length}/200 · Every dare is screened against the guidelines before it goes live.`} />
                 <Card>
                   <Label>Community guidelines</Label>

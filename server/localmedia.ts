@@ -12,7 +12,12 @@ export const LOCAL_MEDIA = () => !process.env.BLOB_READ_WRITE_TOKEN && !process.
 
 const DIR = join(tmpdir(), "betonme-local-uploads");
 const MAX_BYTES = 18 * 1024 * 1024;
-const FILE = /^([a-f0-9]{24})\.(mov|mp4)$/;
+const FILE = /^([a-f0-9]{24})\.(mov|mp4|webm)$/;
+
+export type VideoExt = "mov" | "mp4" | "webm";
+export const VIDEO_EXTS = ["mov", "mp4", "webm"] as const;
+export const extOf = (path: string): VideoExt => (path.endsWith(".mov") ? "mov" : path.endsWith(".webm") ? "webm" : "mp4");
+export const mimeOf = (ext: VideoExt) => (ext === "mov" ? "video/quicktime" : ext === "webm" ? "video/webm" : "video/mp4");
 
 /** Base URL the phone or browser used to reach this server (e.g. http://10.0.0.5:3000). */
 export function originOf(ctx: Ctx): string {
@@ -32,7 +37,7 @@ export async function localUpload(ctx: Ctx) {
   const proof = await proofs.findOne({ _id: new ObjectId(id) });
   const key = ctx.query.get("k") ?? "";
   if (!proof?.localUploadKey || !key || !safeEqual(sha256(key), proof.localUploadKey) || !proof.uploadPath) throw new HttpError(403, "Upload link is invalid or expired.");
-  const ext = proof.uploadPath.endsWith(".mov") ? "mov" : "mp4";
+  const ext = extOf(proof.uploadPath);
 
   const chunks: Buffer[] = [];
   let size = 0;
@@ -50,7 +55,7 @@ export async function localUpload(ctx: Ctx) {
 
 /** Reads a locally stored proof video, only by its exact `<proofId>.<ext>` name. */
 export async function readLocalVideo(proofId: string, ext: string): Promise<Buffer> {
-  if (!/^[a-f0-9]{24}$/.test(proofId) || (ext !== "mov" && ext !== "mp4")) throw new HttpError(400, "Invalid video.");
+  if (!/^[a-f0-9]{24}$/.test(proofId) || !(VIDEO_EXTS as readonly string[]).includes(ext)) throw new HttpError(400, "Invalid video.");
   try {
     return await readFile(join(DIR, `${proofId}.${ext}`));
   } catch {
@@ -65,7 +70,7 @@ export async function serveLocalVideo(ctx: Ctx) {
   if (!m) throw new HttpError(404, "Not found.");
   const data = await readLocalVideo(m[1], m[2]);
   ctx.res.statusCode = 200;
-  ctx.res.setHeader("Content-Type", m[2] === "mov" ? "video/quicktime" : "video/mp4");
+  ctx.res.setHeader("Content-Type", mimeOf(m[2] as VideoExt));
   ctx.res.setHeader("Content-Length", String(data.length));
   ctx.res.end(data);
   return { __handled: true };

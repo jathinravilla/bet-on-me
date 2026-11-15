@@ -132,15 +132,22 @@ export async function publicProfile(ctx: Ctx): Promise<PublicProfile> {
 }
 
 export async function searchUsers(ctx: Ctx): Promise<UserSummary[]> {
-  await rateLimit(`search:${uidOf(ctx.user)}`, 60, 60);
-  const q = (ctx.query.get("q") ?? "").trim().toLowerCase();
-  if (!/^[a-z0-9_]{1,16}$/.test(q)) return [];
+  await rateLimit(`usersearch:${uidOf(ctx.user)}`, 90, 60);
+  const q = (ctx.query.get("q") ?? "").trim().toLowerCase().replace(/^@/, "").slice(0, 24);
+  if (q.length < 1) return [];
+  const safe = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const { users } = await cols();
+  // Matches the start of a username first, then anywhere in a username or display name.
   const list = await users
-    .find({ username: { $regex: `^${q}` } }, { projection: { sessions: 0, wallet: 0, strava: 0 } })
-    .limit(12)
+    .find({ $or: [{ username: { $regex: safe } }, { displayName: { $regex: safe, $options: "i" } }] }, { projection: { sessions: 0, wallet: 0, strava: 0 } })
+    .limit(30)
     .toArray();
-  return list.filter((u) => uidOf(u) !== uidOf(ctx.user)).map((u) => summary(u, ctx.user));
+  const rank = (u: UserDoc) => (u.username.startsWith(q) ? 0 : u.username.includes(q) ? 1 : 2);
+  return list
+    .filter((u) => uidOf(u) !== uidOf(ctx.user))
+    .sort((x, y) => rank(x) - rank(y) || x.username.localeCompare(y.username))
+    .slice(0, 12)
+    .map((u) => summary(u, ctx.user));
 }
 
 // ---------- friends ----------

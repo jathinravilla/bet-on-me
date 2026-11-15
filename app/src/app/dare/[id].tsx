@@ -3,12 +3,13 @@ import { CameraView, useCameraPermissions, useMicrophonePermissions, type Camera
 import * as Haptics from 'expo-haptics';
 import * as Linking from 'expo-linking';
 import { useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { DareStartResponse, DareVerifyResponse, UploadTokenResponse } from '../../../../lib/types';
 import { Butterfingers } from '@/components/Butterfingers';
+import { WebCamera, type Recorder } from '@/components/WebCamera';
 import { Banner, Body, Button, Heading, IconButton, Label, Muted, ProgressBar, Screen, Title, TopBar } from '@/components/ui';
 import { api, errorMessage, uploadFile } from '@/lib/api';
 import { goBack } from '@/lib/nav';
@@ -18,6 +19,7 @@ import { useNow } from '@/lib/useNow';
 import { colors, fonts, radius, space } from '@/lib/theme';
 
 const MAX_SECONDS = 15;
+const isWeb = Platform.OS === 'web';
 type Phase = 'intro' | 'camera' | 'uploading' | 'checking' | 'result';
 
 export default function DareRecorder() {
@@ -26,7 +28,7 @@ export default function DareRecorder() {
   const insets = useSafeAreaInsets();
   const [camPerm, askCam] = useCameraPermissions();
   const [micPerm, askMic] = useMicrophonePermissions();
-  const camera = useRef<CameraView>(null);
+  const camera = useRef<Recorder>(null);
   const [phase, setPhase] = useState<Phase>('intro');
   const [proof, setProof] = useState<DareStartResponse | null>(null);
   const [facing, setFacing] = useState<CameraType>('front');
@@ -46,15 +48,29 @@ export default function DareRecorder() {
     return () => clearInterval(t);
   }, [recording]);
 
-  const granted = camPerm?.granted && micPerm?.granted;
-  const blocked = (camPerm && !camPerm.granted && !camPerm.canAskAgain) || (micPerm && !micPerm.granted && !micPerm.canAskAgain);
+  // In a browser the camera prompt appears when the camera starts, so there are no separate permissions to ask up front.
+  const granted = isWeb || (camPerm?.granted && micPerm?.granted);
+  const blocked = !isWeb && ((camPerm && !camPerm.granted && !camPerm.canAskAgain) || (micPerm && !micPerm.granted && !micPerm.canAskAgain));
+
+  const onWebReady = useCallback(() => setReady(true), []);
+  const onWebError = useCallback((m: string) => {
+    setError(m);
+    setPhase('intro');
+  }, []);
+
+  // If the phone camera never reports ready, don't leave the record button dead.
+  useEffect(() => {
+    if (phase !== 'camera' || ready) return;
+    const t = setTimeout(() => setReady(true), 2500);
+    return () => clearTimeout(t);
+  }, [phase, ready]);
 
   const start = async () => {
     setBusy(true);
     setError(null);
     try {
-      if (!camPerm?.granted && !(await askCam()).granted) return;
-      if (!micPerm?.granted && !(await askMic()).granted) return;
+      if (!isWeb && !camPerm?.granted && !(await askCam()).granted) return;
+      if (!isWeb && !micPerm?.granted && !(await askMic()).granted) return;
       setProof(await api<DareStartResponse>('/dare/start', { body: { challengeId: id } }));
       setElapsed(0);
       setReady(false);
@@ -72,20 +88,24 @@ export default function DareRecorder() {
     setElapsed(0);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     let uri: string | undefined;
+    let webExt: 'webm' | 'mp4' | undefined;
+    let why = '';
     try {
-      uri = (await camera.current.recordAsync({ maxDuration: MAX_SECONDS }))?.uri;
-    } catch {
-      /* handled below */
+      const rec = await camera.current.recordAsync({ maxDuration: MAX_SECONDS });
+      uri = rec?.uri;
+      webExt = (rec as { ext?: 'webm' | 'mp4' } | undefined)?.ext;
+    } catch (e) {
+      why = e instanceof Error ? ` (${e.message})` : '';
     }
     setRecording(false);
     if (!uri) {
-      setError("The recording didn't save. Try again.");
+      setError(`The recording didn't save${why}. Try again.`);
       return setPhase('intro');
     }
     try {
       setPhase('uploading');
       setUpload(0);
-      const ext = uri.toLowerCase().endsWith('.mp4') ? 'mp4' : 'mov';
+      const ext = webExt ?? (uri.toLowerCase().endsWith('.mp4') ? 'mp4' : 'mov');
       const ticket = await api<UploadTokenResponse>('/dare/upload-token', { body: { proofId: proof.proofId, ext } });
       const videoUrl = await uploadFile(uri, ticket.uploadUrl, ticket.headers, setUpload);
       setPhase('checking');
@@ -104,7 +124,11 @@ export default function DareRecorder() {
     const wordLeft = timeLeft(proof.expiresAt, now);
     return (
       <View style={styles.cameraWrap}>
-        <CameraView ref={camera} style={StyleSheet.absoluteFill} facing={facing} mode="video" videoQuality="480p" onCameraReady={() => setReady(true)} />
+        {isWeb ? (
+          <WebCamera facing={facing} onReady={onWebReady} onError={onWebError} recorderRef={camera} />
+        ) : (
+          <CameraView ref={camera as never} style={StyleSheet.absoluteFill} facing={facing} mode="video" videoQuality="480p" onCameraReady={() => setReady(true)} />
+        )}
         <View style={[styles.overlayTop, { paddingTop: insets.top + space.sm }]}>
           <View style={styles.topRow}>
             <IconButton name="close" label="Cancel recording" onPress={() => (recording ? camera.current?.stopRecording() : setPhase('intro'))} />
@@ -196,7 +220,7 @@ export default function DareRecorder() {
           </View>
         ))}
       </View>
-      <Muted center>Videos are recorded in the app only — no camera roll uploads.</Muted>
+      <Muted center>Videos are recorded live here — no uploads from your camera roll.</Muted>
     </Screen>
   );
 }
