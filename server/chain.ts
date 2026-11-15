@@ -1,5 +1,5 @@
 // Solana devnet custody: treasury, per-user wallets and per-challenge escrow wallets.
-import { Connection, Keypair, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction, sendAndConfirmTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { randomBytes } from "node:crypto";
 import { decrypt, encrypt } from "./crypto";
@@ -32,14 +32,19 @@ export interface Move {
   lamports: number;
 }
 
-/** Send one confirmed transaction containing all the given transfers. Returns its signature. */
-export async function transfer(moves: Move[], feePayer: Keypair): Promise<string> {
+// The Solana Memo program lets a transaction carry a short public note. We use it to stamp every
+// settlement with a fingerprint of the result, so anyone can check it on Solana Explorer.
+const MEMO_PROGRAM = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
+
+/** Send one confirmed transaction containing all the given transfers (and an optional memo). Returns its signature. */
+export async function transfer(moves: Move[], feePayer: Keypair, memo?: string): Promise<string> {
   if (moves.length === 0) throw new Error("No transfers.");
   if (SOLANA_MOCK()) return mockTransfer(moves);
   const tx = new Transaction();
   for (const m of moves) {
     tx.add(SystemProgram.transfer({ fromPubkey: m.from.publicKey, toPubkey: new PublicKey(m.to), lamports: m.lamports }));
   }
+  if (memo) tx.add(new TransactionInstruction({ programId: MEMO_PROGRAM, keys: [{ pubkey: moves[0].from.publicKey, isSigner: true, isWritable: false }], data: Buffer.from(memo, "utf8") }));
   tx.feePayer = feePayer.publicKey;
   const signers = [feePayer];
   for (const m of moves) if (!signers.some((s) => s.publicKey.equals(m.from.publicKey))) signers.push(m.from);

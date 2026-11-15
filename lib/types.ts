@@ -34,6 +34,8 @@ export interface SettlementView {
   reason: string;
   outcome: "refund" | "split" | "leader";
   settledAt?: string;
+  /** Fingerprint of the result; the same text is written into the payout transaction on Solana. */
+  receipt?: { hash: string; memo: string };
 }
 
 export interface ProofView {
@@ -245,4 +247,20 @@ export interface UpdateProfileBody {
   displayName?: string;
   bio?: string;
   avatar?: Avatar;
+}
+
+export interface CoachResponse {
+  odds: number; // 1-99, chance a typical player pulls the goal off
+  verdict: string;
+  tip: string;
+  suggestedStakeLamports: number;
+}
+
+export interface SearchResponse {
+  engine: "atlas" | "basic"; // "atlas" = MongoDB Atlas Search, "basic" = plain text match while the index builds
+  results: ChallengeView[];
+}
+
+export interface CommentaryResponse {
+  commentary: { winner: string; loser: string } | null;
 }

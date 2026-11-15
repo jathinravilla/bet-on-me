@@ -6,6 +6,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import type { ActivityItem, ChallengeView, FeedView, FriendsView, UserSummary } from '../../../../lib/types';
 import { ChallengeCard } from '@/components/ChallengeCard';
 import { Avatar, CategoryMark, RatingBadge, Squish, useConfirm, useToast } from '@/components/fx';
+import { Butterfingers } from '@/components/Butterfingers';
 import { Banner, Body, BodyStrong, Button, Card, Field, Heading, Icon, Label, Loading, Muted, Row, Screen, Segmented, Title } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -348,9 +349,7 @@ export default function Friends() {
 function EmptySquad({ onAdd }: { onAdd: () => void }) {
   return (
     <View style={styles.empty}>
-      <View style={styles.emptyIcon}>
-        <Icon name="account-multiple-plus-outline" color={colors.primary} size={22} />
-      </View>
+      <Butterfingers mood="nervous" size={110} />
       <Heading center>Add your first friend</Heading>
       <Muted center>Search a username above. Friends can see each other’s bets, join them, and send challenges.</Muted>
       <Text style={styles.emptyHint} onPress={onAdd} accessibilityRole="button">

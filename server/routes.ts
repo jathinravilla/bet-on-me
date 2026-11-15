@@ -1,6 +1,7 @@
 import { generateClientTokenFromReadWriteToken } from "@vercel/blob/client";
 import { ObjectId } from "mongodb";
 import { randomInt } from "node:crypto";
+import { coach, commentaryFor, searchPublic, similarTo } from "./extras";
 import { ESCROW_TOPUP_LAMPORTS, LAMPORTS_PER_SOL, MAX_PARTICIPANTS, MIN_STAKE_LAMPORTS, POINTS, SIGNUP_FUNDING_LAMPORTS, tierFor } from "../lib/rules";
 import type {
   CreateChallengeBody,
@@ -400,6 +401,29 @@ async function listPublic(ctx: Ctx) {
     challenges.find({ visibility: "public", status: "settled" }).sort({ "settlement.settledAt": -1 }).limit(5).toArray(),
   ]);
   return Promise.all([...live, ...done].map((c) => toView(c, ctx.user)));
+}
+
+async function searchChallenges(ctx: Ctx) {
+  await rateLimit(`search:${uidOf(ctx.user)}`, 60, 60);
+  const q = (ctx.query.get("q") ?? "").trim().slice(0, 60);
+  if (q.length < 2) return { engine: "basic", results: [] };
+  const { docs, engine } = await searchPublic(q);
+  return { engine, results: await Promise.all(docs.map((c) => toView(c, ctx.user))) };
+}
+
+async function similarChallenges(ctx: Ctx) {
+  const ch = await getChallenge(objectIdStr(ctx.params.id, "Challenge id"));
+  assertCanView(ch, ctx.user);
+  if (ch.visibility !== "public") return [];
+  return Promise.all((await similarTo(ch)).map((c) => toView(c, ctx.user)));
+}
+
+async function commentary(ctx: Ctx) {
+  const ch = await getChallenge(objectIdStr(ctx.params.id, "Challenge id"));
+  assertCanView(ch, ctx.user);
+  if (!isParticipant(ch, uidOf(ctx.user)) && ch.visibility !== "public") throw new HttpError(404, "Challenge not found.");
+  await rateLimit(`commentary:${uidOf(ctx.user)}`, 30, 3600);
+  return { commentary: await commentaryFor(ch) };
 }
 
 async function listMine(ctx: Ctx) {
@@ -830,6 +854,10 @@ export const routes: Route[] = [
   { method: "POST", pattern: "/challenges", auth: true, handler: createChallenge },
   { method: "GET", pattern: "/challenges", auth: true, handler: listPublic },
   { method: "GET", pattern: "/challenges/mine", auth: true, handler: listMine },
+  { method: "GET", pattern: "/challenges/search", auth: true, handler: searchChallenges },
+  { method: "POST", pattern: "/coach", auth: true, handler: coach },
+  { method: "GET", pattern: "/challenges/:id/similar", auth: true, handler: similarChallenges },
+  { method: "GET", pattern: "/challenges/:id/commentary", auth: true, handler: commentary },
   { method: "POST", pattern: "/challenges/join", auth: true, handler: join },
   { method: "GET", pattern: "/challenges/:id", auth: true, handler: detail },
   { method: "POST", pattern: "/challenges/:id/sync", auth: true, handler: sync },

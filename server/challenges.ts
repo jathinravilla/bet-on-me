@@ -3,6 +3,7 @@ import { ObjectId } from "mongodb";
 import { computeSettlement, settlementPoints, type SettleInput, type SettleResult } from "../lib/rules";
 import type { ChallengeView, ProofView } from "../lib/types";
 import { keypairOf, transfer } from "./chain";
+import { sha256 } from "./crypto";
 import { cols, type ChallengeDoc, type DareProofDoc, type ParticipantDoc, type UserDoc } from "./db";
 import { chessRating, stravaMiles } from "./external";
 import { HttpError } from "./http";
@@ -92,6 +93,7 @@ export async function toView(ch: ChallengeDoc, me: UserDoc, withProofs = false):
       reason: ch.settlement.reason,
       outcome: ch.settlement.outcome,
       settledAt: ch.settlement.settledAt?.toISOString(),
+      receipt: ch.settlement.receipt,
     },
     upvotes: ch.upvotes,
     downvotes: ch.downvotes,
@@ -246,6 +248,13 @@ function settleInput(ch: ChallengeDoc): SettleInput {
  * Settle a challenge exactly once. An atomic status flip (active -> settling) is the lock; the payout
  * plan is saved before any money moves so a crashed run can be resumed without paying anyone twice.
  */
+/** A short fingerprint of the final result. It goes into the Solana memo, so the on-chain record can be checked against the app. */
+export function makeReceipt(challengeId: string, r: SettleResult): { hash: string; memo: string } {
+  const canonical = JSON.stringify({ v: 1, c: challengeId, o: r.outcome, w: [...r.winners].sort(), p: r.payouts.map((p) => [p.userId, p.lamports]).sort() });
+  const hash = sha256(canonical);
+  return { hash, memo: `betonme:v1:${challengeId}:${r.outcome}:${r.winners.length}w:${hash.slice(0, 24)}` };
+}
+
 export async function settleChallenge(
   id: string,
   opts: { refundReason?: string; finalStatus?: "settled" | "banned" } = {}
@@ -279,6 +288,7 @@ export async function settleChallenge(
       reason: result.reason,
       outcome: result.outcome,
       finalStatus: opts.finalStatus ?? "settled",
+      receipt: makeReceipt(id, result),
     };
     await challenges.updateOne({ _id }, { $set: { settlement } });
     ch.settlement = settlement;
@@ -294,7 +304,7 @@ export async function settleChallenge(
     for (let i = 0; i < unpaid.length; i += PAYOUTS_PER_TX) {
       const batch = unpaid.slice(i, i + PAYOUTS_PER_TX).filter((p) => address.has(p.userId));
       if (batch.length === 0) continue;
-      const sig = await transfer(batch.map((p) => ({ from: escrow, to: address.get(p.userId)!, lamports: p.lamports })), escrow);
+      const sig = await transfer(batch.map((p) => ({ from: escrow, to: address.get(p.userId)!, lamports: p.lamports })), escrow, s.receipt?.memo);
       await challenges.updateOne(
         { _id },
         { $set: { "settlement.payouts.$[p].txSig": sig } },

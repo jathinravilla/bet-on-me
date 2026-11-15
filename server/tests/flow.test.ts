@@ -110,6 +110,9 @@ test("create -> join by code -> simulate -> end now -> leader is paid", async ()
   assert.deepEqual(ended.data.settlement?.winners, [b.me.id]);
   assert.equal(ended.data.settlement?.payouts[0].lamports, sol(0.2));
   assert.ok(ended.data.settlement?.payouts[0].txSig);
+  // every settlement carries a fingerprint that is also written on-chain via the Memo program
+  assert.match(ended.data.settlement?.receipt?.memo ?? "", new RegExp(`^betonme:v1:${ch.id}:leader:1w:[0-9a-f]{24}$`));
+  assert.equal(ended.data.settlement?.receipt?.hash.length, 64);
 
   // settling again is a no-op (no double payout)
   await call("POST", `/challenges/${ch.id}/settle`, a.token);
@@ -328,4 +331,20 @@ test("cron endpoint needs its secret; demo routes vanish when demo mode is off",
   process.env.DEMO_MODE = "false";
   assert.equal((await call("POST", "/demo/end-now", a.token, { challengeId: ch.id })).status, 404);
   process.env.DEMO_MODE = "true";
+});
+
+test("search finds public bets only; coach degrades gracefully without Gemini", async () => {
+  const a = await login("sera");
+  const pub = (await call<ChallengeView>("POST", "/challenges", a.token, strava({ visibility: "public", title: "Sunrise mile club" }))).data;
+  await call("POST", "/challenges", a.token, strava({ visibility: "friends", title: "Sunrise secret club" }));
+  const b = await login("seb");
+  const found = (await call<{ engine: string; results: ChallengeView[] }>("GET", "/challenges/search?q=sunrise", b.token)).data;
+  assert.deepEqual(found.results.map((c) => c.id), [pub.id]); // the friends-only one never shows up
+  assert.equal(found.engine, "basic"); // no Atlas Search on the in-memory test database
+  assert.deepEqual((await call<{ results: unknown[] }>("GET", "/challenges/search?q=s", b.token)).data.results, []);
+  assert.deepEqual((await call<unknown[]>("GET", `/challenges/${pub.id}/similar`, b.token)).data, []);
+
+  delete process.env.GEMINI_API_KEY;
+  const advice = await call("POST", "/coach", b.token, { category: "strava", mode: "target", title: "Run it", target: 5, durationMinutes: 10080 });
+  assert.equal(advice.status, 502); // a clear message, not a crash
 });

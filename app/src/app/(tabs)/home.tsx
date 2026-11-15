@@ -1,13 +1,13 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
-import type { Category, ChallengeView } from '../../../../lib/types';
+import type { Category, ChallengeView, SearchResponse } from '../../../../lib/types';
 import { ChallengeCard } from '@/components/ChallengeCard';
 import { Butterfingers } from '@/components/Butterfingers';
 import { Avatar, Gradient, Squish } from '@/components/fx';
-import { Banner, Button, DevnetTag, Heading, Loading, Muted, Row, Screen, Segmented } from '@/components/ui';
+import { Banner, Button, Chip, DevnetTag, Heading, Icon, Loading, Muted, Row, Screen, Segmented } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { coins } from '@/lib/format';
@@ -31,6 +31,20 @@ export default function Home() {
   const [lists, setLists] = useState<Record<Tab, ChallengeView[] | null>>({ mine: null, public: null });
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [q, setQ] = useState('');
+  const [found, setFound] = useState<(SearchResponse & { term: string }) | null>(null);
+
+  // Search public bets (MongoDB Atlas Search) once you pause typing.
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) return;
+    const t = setTimeout(() => {
+      api<SearchResponse>(`/challenges/search?q=${encodeURIComponent(term)}`)
+        .then((r) => setFound({ ...r, term }))
+        .catch(() => setFound({ engine: 'basic', results: [], term }));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [q]);
   const now = useNow();
 
   const load = useCallback(async () => {
@@ -54,7 +68,10 @@ export default function Home() {
 
   if (!me) return null;
   const list = lists[tab];
-  const shown = list?.filter((c) => filter === 'all' || c.category === filter) ?? null;
+  const term = q.trim();
+  const searchActive = tab === 'public' && term.length >= 2;
+  const source = searchActive ? (found?.term === term ? found.results : null) : list;
+  const shown = source?.filter((c) => filter === 'all' || c.category === filter) ?? null;
   const myLive = (lists.mine ?? []).filter((c) => c.status === 'active' && new Date(c.endsAt).getTime() > now);
   const inPlay = myLive.reduce((s, c) => s + c.stakeLamports, 0);
   const atStake = myLive.reduce((s, c) => s + c.potLamports, 0);
@@ -133,12 +150,33 @@ export default function Home() {
         })}
       </ScrollView>
 
+      {tab === 'public' ? (
+        <View>
+          <View style={styles.search}>
+            <Icon name="magnify" color={colors.textDim} size={20} />
+            <TextInput
+              accessibilityLabel="Search public bets"
+              value={q}
+              onChangeText={setQ}
+              placeholder="Search bets, dares, people"
+              placeholderTextColor={colors.textDim}
+              selectionColor={colors.primary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+              style={styles.searchInput}
+            />
+            {searchActive && found?.engine === 'atlas' ? <Chip icon="leaf" text="Atlas Search" tone="success" /> : null}
+          </View>
+        </View>
+      ) : null}
+
       {shown === null ? (
         <Loading label="Loading challenges" />
       ) : shown.length === 0 ? (
         <View style={styles.empty}>
           <Butterfingers mood={tab === 'mine' ? 'thinking' : 'idle'} size={110} />
-          <Heading center>{tab === 'mine' ? (filter === 'all' ? 'No bets yet' : 'Nothing in this category') : 'No public challenges live'}</Heading>
+          <Heading center>{searchActive ? `Nothing found for “${term}”` : tab === 'mine' ? (filter === 'all' ? 'No bets yet' : 'Nothing in this category') : 'No public challenges live'}</Heading>
           <Muted center>{tab === 'mine' ? 'Start a challenge, join a friend with a code, or browse public challenges.' : 'Create a public challenge and anyone can take the other side.'}</Muted>
           <Row gap={space.sm}>
             <Button small title="New challenge" onPress={() => router.push('/create')} />
@@ -185,5 +223,7 @@ const styles = StyleSheet.create({
   filter: { paddingHorizontal: 14, height: 34, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.borderHi, alignItems: 'center', justifyContent: 'center' },
   filterOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   filterText: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.textMuted },
+  search: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 48, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.borderHi, backgroundColor: colors.surface, paddingHorizontal: space.md },
+  searchInput: { flex: 1, color: colors.text, fontFamily: fonts.body, fontSize: 15, minHeight: 44 },
   empty: { alignItems: 'center', gap: space.sm, paddingVertical: space.xl, paddingHorizontal: space.lg },
 });

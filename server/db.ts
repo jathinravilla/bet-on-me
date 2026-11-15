@@ -72,6 +72,8 @@ export interface ChallengeDoc {
     payouts: { userId: string; lamports: number; txSig: string | null }[];
     reason: string;
     outcome: "refund" | "split" | "leader";
+    receipt?: { hash: string; memo: string }; // fingerprint of the result, also written on-chain via the Memo program
+    commentary?: { winner: string; loser: string; generatedAt: Date };
     pointsApplied?: boolean;
     finalStatus: "settled" | "banned";
     settledAt?: Date;

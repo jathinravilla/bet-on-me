@@ -4,11 +4,12 @@ import * as Haptics from 'expo-haptics';
 import * as Linking from 'expo-linking';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { DareStartResponse, DareVerifyResponse, UploadTokenResponse } from '../../../../lib/types';
-import { Banner, Body, Button, Heading, Icon, IconButton, Label, Muted, ProgressBar, Screen, Title, TopBar } from '@/components/ui';
+import { Butterfingers } from '@/components/Butterfingers';
+import { Banner, Body, Button, Heading, IconButton, Label, Muted, ProgressBar, Screen, Title, TopBar } from '@/components/ui';
 import { api, errorMessage, uploadFile } from '@/lib/api';
 import { goBack } from '@/lib/nav';
 import { useAuth } from '@/lib/auth';
@@ -142,10 +143,10 @@ export default function DareRecorder() {
     return (
       <Screen scroll={false}>
         <View style={styles.center} accessibilityLiveRegion="polite">
-          <ActivityIndicator color={colors.primary} />
+          <Butterfingers mood="thinking" size={130} />
           <Title center>{phase === 'uploading' ? 'Uploading your proof' : 'Checking your proof'}</Title>
           <Body center color={colors.textMuted}>
-            {phase === 'uploading' ? `${Math.round(upload * 100)}%` : 'Gemini is watching the video and listening for your word. This takes a few seconds.'}
+            {phase === 'uploading' ? `${Math.round(upload * 100)}%` : 'Butterfingers is watching the video with Gemini and listening for your word. This takes a few seconds.'}
           </Body>
           {phase === 'uploading' ? (
             <View style={{ alignSelf: 'stretch' }}>
@@ -163,9 +164,7 @@ export default function DareRecorder() {
     return (
       <Screen footer={<Button title={fail ? 'Back to challenge' : 'Done'} onPress={() => goBack('/home')} />}>
         <View style={[styles.center, { paddingTop: space.xxl }]}>
-          <View style={[styles.resultIcon, { backgroundColor: pass ? colors.successBg : fail ? colors.dangerBg : colors.primarySoft }]}>
-            <Icon name={pass ? 'check' : fail ? 'close' : 'help'} color={pass ? colors.success : fail ? colors.danger : colors.primary} size={28} />
-          </View>
+          <Butterfingers mood={pass ? 'celebrate' : fail ? 'fumble' : 'nervous'} size={150} />
           <Title center>{pass ? 'Proof passed' : result.verdict === 'fail' ? 'Proof failed' : 'Needs a vote'}</Title>
           <Body center>{result.reason}</Body>
           {result.finalStatus === 'approved' ? <Banner tone="success" text="Dare complete. You're in line for the pot." /> : null}

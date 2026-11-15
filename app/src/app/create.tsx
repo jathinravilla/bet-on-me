@@ -5,6 +5,8 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import type { Category, ChallengeView, ChessTimeControl, CreateChallengeBody, FriendsView, MeView, Mode, Visibility } from '../../../lib/types';
+import { Butterfingers } from '@/components/Butterfingers';
+import { CoachCard } from '@/components/CoachCard';
 import { Avatar, CategoryMark, Squish, useToast } from '@/components/fx';
 import { Logo } from '@/components/Logo';
 import { Banner, Body, BodyStrong, Button, Card, Chip, Choice, Field, Heading, Icon, Label, Money, Muted, Row, Screen, Segmented, Title, TopBar, type IconName } from '@/components/ui';
@@ -233,9 +235,7 @@ export default function Create() {
     return (
       <Screen footer={<Button title="View challenge" onPress={() => router.replace(`/challenge/${created.id}`)} />}>
         <Animated.View entering={FadeIn.duration(400)} style={styles.done}>
-          <View style={styles.doneIcon}>
-            <Icon name="check" color={colors.success} size={28} />
-          </View>
+          <Butterfingers mood="celebrate" size={150} />
           <Title center>Challenge is live</Title>
           <Body center color={colors.textMuted}>
             Your {coins(created.stakeLamports)}-coin stake is locked in the pot.
@@ -463,6 +463,23 @@ export default function Create() {
           <>
             <Title>How much is on the line?</Title>
             <Muted>Everyone who joins puts in the same stake. Your wallet has {coins(me.wallet.balanceLamports)} coins.</Muted>
+            <CoachCard
+              body={{
+                category,
+                mode: effectiveMode,
+                title: title.trim() || 'My challenge',
+                description: kind === 'custom' && category !== 'dare' ? goal.trim() : '',
+                target: category !== 'dare' && effectiveMode === 'target' ? targetNum : undefined,
+                chessTimeControl: tc,
+                dareText: category === 'dare' ? finalDare : undefined,
+                durationMinutes: minutes,
+              }}
+              maxCoins={Math.max(10, Math.floor(maxStake / 1_000_000))}
+              onUse={(n) => {
+                setCustomStake('');
+                setStake(n);
+              }}
+            />
             <View style={styles.stakeHero}>
               <Text style={styles.stakeBig}>{stake.toLocaleString()}</Text>
               <Text style={styles.stakeUnit}>coins each</Text>

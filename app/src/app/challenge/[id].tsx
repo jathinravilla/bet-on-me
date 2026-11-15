@@ -1,18 +1,19 @@
 import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
 import { RefreshControl, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
-import type { ChallengeView, FriendsView, ProofView } from '../../../../lib/types';
-import { StatusChip, onTrack } from '@/components/ChallengeCard';
+import type { ChallengeView, CommentaryResponse, FriendsView, ProofView } from '../../../../lib/types';
+import { ChallengeCard, StatusChip, onTrack } from '@/components/ChallengeCard';
+import { ResultCard } from '@/components/ResultCard';
 import { Avatar, AvatarStack, CategoryMark, Pop, RatingBadge, Sheet, Squish, StarInput, useConfirm, useToast } from '@/components/fx';
 import { Banner, Body, BodyStrong, Button, Card, Chip, Divider, Heading, Icon, IconButton, Loading, Muted, ProgressBar, Row, Screen, Title, TopBar } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { goBack } from '@/lib/nav';
 import { useAuth } from '@/lib/auth';
-import { shareText } from '@/lib/share';
+import { WEB_URL, shareCard, shareText } from '@/lib/share';
 import { endingSoon, explorerAddress, explorerTx, goalLine, isRealSig, progressLabel, progressRatio, coins, timeLeft } from '@/lib/format';
 import { connectStrava } from '@/lib/connect';
 import { useNow } from '@/lib/useNow';
@@ -34,6 +35,9 @@ export default function ChallengeDetail() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [squad, setSquad] = useState<FriendsView['friends'] | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
+  const [quote, setQuote] = useState<CommentaryResponse['commentary']>(null);
+  const [similar, setSimilar] = useState<ChallengeView[]>([]);
+  const cardRef = useRef<ComponentRef<typeof View>>(null);
 
   const load = useCallback(async () => {
     try {
@@ -48,6 +52,18 @@ export default function ChallengeDetail() {
       setError(errorMessage(e));
     }
   }, [id, refresh]);
+
+  // Butterfingers' one-liner once the bet is settled, and (for public bets) Atlas "more like this".
+  const settledNow = c?.status === 'settled';
+  const publicNow = c?.visibility === 'public';
+  useEffect(() => {
+    if (!settledNow) return;
+    api<CommentaryResponse>(`/challenges/${id}/commentary`).then((r) => setQuote(r.commentary)).catch(() => {});
+  }, [id, settledNow]);
+  useEffect(() => {
+    if (!publicNow) return;
+    api<ChallengeView[]>(`/challenges/${id}/similar`).then(setSimilar).catch(() => {});
+  }, [id, publicNow]);
 
   // Live leaderboard: poll every 10s while the screen is open.
   useFocusEffect(
@@ -221,7 +237,40 @@ export default function ChallengeDetail() {
                 </Row>
               ))}
             </View>
+            {c.settlement.receipt ? (
+              <View style={styles.receipt}>
+                <Row gap={space.sm}>
+                  <Icon name="shield-check-outline" color={colors.primary} size={16} />
+                  <BodyStrong style={styles.flex}>On-chain receipt</BodyStrong>
+                  {c.settlement.payouts.find((p) => isRealSig(p.txSig)) ? (
+                    <Text onPress={() => open(explorerTx(c.settlement!.payouts.find((p) => isRealSig(p.txSig))!.txSig!))} accessibilityRole="link" style={styles.receiptLink}>
+                      Verify on Explorer
+                    </Text>
+                  ) : null}
+                </Row>
+                <Muted selectable>{c.settlement.receipt.memo}</Muted>
+                <Muted>This fingerprint of the result is written into the payout transaction on Solana, so nobody can quietly change who won.</Muted>
+              </View>
+            ) : null}
           </Card>
+        </Animated.View>
+      ) : null}
+
+      {/* Shareable result card */}
+      {c.status === 'settled' && c.settlement ? (
+        <Animated.View entering={FadeIn.duration(300)} style={{ gap: space.md }}>
+          <ResultCard cardRef={cardRef} c={c} iWon={iWon} quote={quote ? (iWon ? quote.winner : quote.loser) : null} />
+          <Button
+            variant="secondary"
+            icon="share-variant-outline"
+            title="Share result"
+            onPress={async () => {
+              const won = c.settlement!.winners.map((w) => c.participants.find((p) => p.userId === w)?.username).filter(Boolean).map((u) => `@${u}`).join(' & ');
+              const text = `${c.title} just settled on Bet On Me${won && c.settlement!.outcome !== 'refund' ? ` — ${won} took the pot` : ''}. Put your own goals on the line: ${WEB_URL}`;
+              const r = await shareCard(cardRef, text);
+              if (r === 'copied') toast('Copied — paste it anywhere', 'success', 'content-copy');
+            }}
+          />
         </Animated.View>
       ) : null}
 
@@ -422,6 +471,18 @@ export default function ChallengeDetail() {
         </Card>
       ) : null}
 
+      {similar.length > 0 ? (
+        <View style={{ gap: space.md }}>
+          <Row style={{ justifyContent: 'space-between' }}>
+            <Heading accessibilityRole="header">Bets like this</Heading>
+            <Chip icon="leaf" text="MongoDB Atlas Search" />
+          </Row>
+          {similar.map((s) => (
+            <ChallengeCard key={s.id} c={s} now={now} onPress={() => router.push(`/challenge/${s.id}`)} />
+          ))}
+        </View>
+      ) : null}
+
       {/* Demo tools */}
       {me.demoMode && c.joined && live && (c.visibility === 'friends' || c.creatorId === me.id) ? (
         <Card style={{ borderStyle: 'dashed' }}>
@@ -540,6 +601,8 @@ function ProofRow({ p, now, busy, onWatch, onDispute, onVote }: { p: ProofView; 
 }
 
 const styles = StyleSheet.create({
+  receipt: { gap: space.xs, paddingTop: space.md, borderTopWidth: 1, borderTopColor: colors.hairline },
+  receiptLink: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.primary },
   flex: { flex: 1 },
   tabular: { fontVariant: ['tabular-nums'] },
   meta: { fontFamily: fonts.bodyMedium, fontSize: 12.5, color: colors.textMuted },
