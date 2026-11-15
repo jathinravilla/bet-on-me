@@ -18,3 +18,6 @@ export async function connectStrava(refresh: () => Promise<MeView | null>): Prom
 }
 
 export const linkChess = (username: string) => api<MeView>('/me/chess', { body: { username: username.trim() } });
+
+export const linkGithub = (username: string) => api<MeView>('/me/github', { body: { username: username.trim() } });
+export const linkDuolingo = (username: string) => api<MeView>('/me/duolingo', { body: { username: username.trim() } });

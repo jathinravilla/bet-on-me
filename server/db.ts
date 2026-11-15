@@ -17,6 +17,8 @@ export interface UserDoc {
   fundState: "none" | "pending" | "done";
   points: number;
   chessUsername?: string;
+  githubUsername?: string;
+  duolingoUsername?: string;
   strava?: { athleteId: number; accessToken: string; refreshToken: string; expiresAt: number }; // tokens encrypted
   stravaDemo?: { runs: { miles: number; at: Date }[] }; // demo-only stand-in for Strava (simulated GPS runs)
   stravaOauth?: { nonce: string; returnTo: string; at: Date };
@@ -73,6 +75,7 @@ export interface ParticipantDoc {
   joinedAt: Date;
   stakeTxSig: string; // "pending" while the stake transfer is in flight
   baseline?: number;
+  windowStart?: string; // GitHub: first day (YYYY-MM-DD) counted toward this player
   progress: number;
   completed: boolean;
   lastSyncedAt?: Date;

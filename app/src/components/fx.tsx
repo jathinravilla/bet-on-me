@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Avatar as AvatarData } from '../../../lib/types';
 import { Body, Button, Heading, Icon, Muted, type IconName } from '@/components/ui';
-import { categoryMeta, colors, fonts, radius, space } from '@/lib/theme';
+import { categoryMeta, colors, fonts, radius, space, metaOf } from '@/lib/theme';
 
 // ---------- Gradient ----------
 
@@ -374,7 +374,7 @@ const ratingStyles = StyleSheet.create({
 
 /** Flat rounded square with the category's icon — the "ticker symbol" of a challenge. */
 export function CategoryMark({ category, size = 40 }: { category: keyof typeof categoryMeta; size?: number }) {
-  const m = categoryMeta[category];
+  const m = metaOf(category);
   return (
     <View accessible={false} style={{ width: size, height: size, borderRadius: size * 0.28, backgroundColor: colors.surfaceHi, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}>
       <Icon name={m.icon} size={size * 0.5} color={m.color} />

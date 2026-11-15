@@ -56,6 +56,8 @@ export const gradients = {
   run: ['#BDEFF7', '#5FB9E0'],
   chess: ['#C9D8FF', '#7C9BE8'],
   dare: ['#FFFFFF', '#B6D6F2'],
+  github: ['#DCE6F5', '#8FA6C8'],
+  duolingo: ['#D9F5E6', '#7FCFA8'],
   custom: ['#E1F4FF', '#7FB0E0'],
   stage: ['#18357A', '#0A1B3F'],
   attention: ['#FFE07A', '#FFC21F'],
@@ -81,4 +83,11 @@ export const categoryMeta = {
   strava: { label: 'Running', icon: 'run-fast', unit: 'mi', color: '#5BAEE0', gradient: gradients.run },
   chess: { label: 'Chess', icon: 'chess-knight', unit: 'elo', color: '#7C9BE8', gradient: gradients.chess },
   dare: { label: 'Dare', icon: 'drama-masks', unit: '', color: '#4B7FC4', gradient: gradients.dare },
+  github: { label: 'GitHub', icon: 'github', unit: 'contributions', color: '#A9B8D0', gradient: gradients.github },
+  duolingo: { label: 'Duolingo', icon: 'owl', unit: 'XP', color: '#6CC79A', gradient: gradients.duolingo },
 } as const;
+
+type CategoryMeta = (typeof categoryMeta)[keyof typeof categoryMeta];
+const UNKNOWN_CATEGORY: CategoryMeta = { label: 'Challenge', icon: 'flag-outline', unit: '', color: '#9AD7F5', gradient: gradients.custom } as unknown as CategoryMeta;
+/** Category styling that never crashes on a type this build doesn't know yet (an older app on a newer server). */
+export const metaOf = (category: string): CategoryMeta => (categoryMeta as Record<string, CategoryMeta>)[category] ?? UNKNOWN_CATEGORY;

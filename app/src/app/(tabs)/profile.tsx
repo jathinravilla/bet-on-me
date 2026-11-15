@@ -10,6 +10,8 @@ import { Avatar, CategoryMark, RatingBadge, Sheet, Squish, useConfirm, useToast 
 import { Banner, Body, BodyStrong, Button, Card, Chip, DevnetTag, Field, Heading, Icon, IconButton, Label, Money, Muted, ProgressBar, Row, Screen, Title, type IconName } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { DUOLINGO_NOTE, GITHUB_NOTE, LinkAppCard } from '@/components/LinkAppCard';
+import { linkDuolingo, linkGithub } from '@/lib/connect';
 import { shareText } from '@/lib/share';
 import { UPCOMING } from '@/lib/integrations';
 import { explorerAddress, shortKey, coins } from '@/lib/format';
@@ -196,6 +198,8 @@ export default function Profile() {
             </>
           ) : null}
         </Card>
+        <LinkAppCard name="GitHub" icon="github" color={categoryMeta.github.color} linkedAs={me.githubUsername} purpose="Needed for GitHub challenges" placeholder="e.g. octocat" maxLength={39} note={GITHUB_NOTE} link={linkGithub} />
+        <LinkAppCard name="Duolingo" icon="owl" color={categoryMeta.duolingo.color} linkedAs={me.duolingoUsername} purpose="Needed for Duolingo challenges" placeholder="e.g. luis" maxLength={30} note={DUOLINGO_NOTE} link={linkDuolingo} />
         <Card>
           <Row>
             <View style={styles.appIcon}>

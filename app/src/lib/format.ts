@@ -39,6 +39,8 @@ export const endingSoon = (c: ChallengeView, now = Date.now()) => {
 export function goalLine(c: ChallengeView): string {
   if (c.category === 'dare') return c.dareText ?? 'Do the dare';
   if (c.category === 'strava') return c.mode === 'target' ? `Run or walk ${c.target} miles` : 'Most miles wins';
+  if (c.category === 'github') return c.mode === 'target' ? `Make ${c.target} GitHub contributions` : 'Most GitHub contributions wins';
+  if (c.category === 'duolingo') return c.mode === 'target' ? `Earn ${c.target?.toLocaleString()} Duolingo XP` : 'Most Duolingo XP wins';
   const tc = c.chessTimeControl ?? 'rapid';
   return c.mode === 'target' ? `Reach ${c.target} ${tc} on chess.com` : `Most ${tc} rating gained wins`;
 }
@@ -46,6 +48,8 @@ export function goalLine(c: ChallengeView): string {
 export function progressLabel(c: ChallengeView, p: ParticipantView): string {
   if (c.category === 'dare') return p.completed ? 'Done' : 'Not yet';
   if (c.category === 'strava') return `${p.progress.toFixed(1)} mi`;
+  if (c.category === 'github') return `${Math.round(p.progress)}`;
+  if (c.category === 'duolingo') return `${Math.round(p.progress).toLocaleString()} XP`;
   if (c.mode === 'target') return `${Math.round(p.progress)}`;
   return `${p.progress >= 0 ? '+' : ''}${Math.round(p.progress)}`;
 }

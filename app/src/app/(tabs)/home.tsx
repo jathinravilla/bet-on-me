@@ -21,6 +21,8 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'strava', label: 'Running' },
   { value: 'chess', label: 'Chess' },
+  { value: 'github', label: 'GitHub' },
+  { value: 'duolingo', label: 'Duolingo' },
   { value: 'dare', label: 'Dares' },
 ];
 

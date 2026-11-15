@@ -5,11 +5,12 @@ import type { ChallengeView, ProofView } from "../lib/types";
 import { keypairOf, transfer } from "./chain";
 import { sha256 } from "./crypto";
 import { cols, type ChallengeDoc, type DareProofDoc, type ParticipantDoc, type UserDoc } from "./db";
-import { chessRating, stravaMiles } from "./external";
+import { chessRating, duolingoXp, githubContributionsSince, githubWindowStart, stravaMiles } from "./external";
 import { postEvent, fmt } from "./events";
 import { HttpError } from "./http";
 
 const SYNC_CACHE_MS = 60_000;
+const SCRAPE_CACHE_MS = 3 * 60_000; // GitHub / Duolingo public pages: be gentle
 const STALE_SETTLING_MS = 90_000;
 const PAYOUTS_PER_TX = 12;
 
@@ -154,7 +155,7 @@ export async function syncChallenge(ch: ChallengeDoc, opts: { onlyUserId?: strin
   const due = staked(ch).filter(
     (p) =>
       (!opts.onlyUserId || p.userId === opts.onlyUserId) &&
-      (opts.force || !p.lastSyncedAt || now - p.lastSyncedAt.getTime() > SYNC_CACHE_MS)
+      (opts.force || !p.lastSyncedAt || now - p.lastSyncedAt.getTime() > (ch.category === "github" || ch.category === "duolingo" ? SCRAPE_CACHE_MS : SYNC_CACHE_MS))
   );
   if (due.length === 0) return ch;
   const docs = await users.find({ _id: { $in: due.map((p) => new ObjectId(p.userId)) } }).toArray();
@@ -169,7 +170,22 @@ export async function syncChallenge(ch: ChallengeDoc, opts: { onlyUserId?: strin
       let completed = p.completed;
       const set: Record<string, unknown> = {};
 
-      if (ch.category === "chess") {
+      // Unofficial public pages: on a failed read keep the last numbers, but still note the attempt so
+      // a broken source isn't hit again on every viewer's 10-second refresh.
+      const markTried = () => challenges.updateOne({ _id: ch._id, "participants.userId": p.userId }, { $set: { "participants.$.lastSyncedAt": new Date() } });
+      if (ch.category === "github" || ch.category === "duolingo") {
+        const gained =
+          ch.category === "github"
+            ? user.githubUsername
+              ? await githubContributionsSince(user.githubUsername, p.windowStart ?? githubWindowStart(p.joinedAt))
+              : null
+            : user.duolingoUsername
+              ? await duolingoXp(user.duolingoUsername)
+              : null;
+        if (gained === null || p.baseline === undefined) return void (await markTried());
+        progress = Math.max(0, gained - p.baseline) + bonus;
+        if (ch.mode === "target") completed = completed || progress >= (ch.target ?? Infinity);
+      } else if (ch.category === "chess") {
         if (!user.chessUsername) return;
         const rating = await chessRating(user.chessUsername, ch.chessTimeControl ?? "rapid");
         if (rating === null) return; // keep the last known numbers if chess.com is down
@@ -211,9 +227,14 @@ const cid = (ch: ChallengeDoc) => ch._id.toHexString();
 /** Thread updates when a player's synced numbers move up (never when they drop). */
 async function progressEvents(ch: ChallengeDoc, p: ParticipantDoc, progress: number, completed: boolean) {
   if (progress > p.progress) {
+    const gain = Math.round(progress - p.progress);
     const text =
       ch.category === "strava"
         ? `${p.username} logged +${fmt.miles(progress - p.progress)} mi · ${fmt.miles(progress)} mi total`
+        : ch.category === "github"
+          ? `${p.username} made +${gain} contribution${gain === 1 ? "" : "s"} · ${Math.round(progress)} total`
+          : ch.category === "duolingo"
+            ? `${p.username} earned +${gain} XP · ${Math.round(progress)} XP total`
         : ch.mode === "target"
           ? `${p.username} climbed to ${Math.round(progress)} ${ch.chessTimeControl ?? "rapid"}`
           : `${p.username} is now ${progress >= 0 ? "+" : ""}${Math.round(progress)} rating`;
