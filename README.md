@@ -14,7 +14,7 @@ Built at sunhacks 2026 by team Moneyball. Mascot: **Butterfingers**, a nervous s
 | Duolingo | XP from the public profile — only XP earned after you join counts |
 | Dare | In-app 15s video with a random liveness word, judged by Gemini, then disputed/voted by players |
 
-Running uses a simulated Strava in demo mode (no Strava API app yet). GitHub and Duolingo need no sign-in, but the username isn't ownership-checked. A failed read from any of these sources refuses the create/join instead of counting someone's whole history as progress.
+Running uses a **demo Strava button**: getting Strava API access requires a Pro (paid) subscription, which we didn't have for the hackathon. The real OAuth code path is built and switches on when Strava keys are set. GitHub and Duolingo need no sign-in, but the username isn't ownership-checked. A failed read from any of these sources refuses the create/join instead of counting someone's whole history as progress.
 
 - Every user gets a custodial devnet wallet funded from a treasury on sign-up.
 - Each challenge has its own escrow wallet. Joining moves your stake into it; settlement pays winners from it. Every transfer links to Solana Explorer.
