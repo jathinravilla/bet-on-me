@@ -105,7 +105,7 @@ export default function Friends() {
   useFocusEffect(
     useCallback(() => {
       void load();
-      const poll = setInterval(() => void load(), 20_000);
+      const poll = setInterval(() => void load(), 30_000);
       return () => clearInterval(poll);
     }, [load])
   );

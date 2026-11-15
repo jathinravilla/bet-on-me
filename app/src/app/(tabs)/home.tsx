@@ -80,7 +80,7 @@ export default function Home() {
     useCallback(() => {
       void load();
       void refresh();
-      const poll = setInterval(() => void load(), 15_000);
+      const poll = setInterval(() => void load(), 30_000);
       return () => clearInterval(poll);
     }, [load, refresh])
   );
