@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import type { ComponentProps, ReactNode } from 'react';
+import { useEffect, type ComponentProps, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -14,9 +14,10 @@ import {
   type TextProps,
   type ViewStyle,
 } from 'react-native';
+import Animated, { Easing, FadeInUp, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { TAB_BAR_HEIGHT, colors, fonts, icon, radius, space } from '@/lib/theme';
+import { TAB_BAR_HEIGHT, colors, fonts, icon, motion, radius, space } from '@/lib/theme';
 
 export type IconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -158,52 +159,77 @@ type ButtonProps = {
   accessibilityHint?: string;
 };
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const PRESS_EASE = Easing.out(Easing.cubic);
+
+/** Shared press feedback: a quick, subtle sink on touch and a settle back on release. */
+function usePressScale(to = 0.97) {
+  const reduce = useReducedMotion();
+  const scale = useSharedValue(1);
+  const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return {
+    animated,
+    onPressIn: () => {
+      if (!reduce) scale.set(withTiming(to, { duration: motion.tap, easing: PRESS_EASE }));
+    },
+    onPressOut: () => {
+      if (!reduce) scale.set(withTiming(1, { duration: motion.quick, easing: PRESS_EASE }));
+    },
+  };
+}
+
 export function Button({ title, onPress, variant = 'primary', icon: iconName, loading, disabled, small, style, accessibilityHint }: ButtonProps) {
   const off = disabled || loading;
+  const press = usePressScale();
   const fg =
     variant === 'primary' || variant === 'attention' ? colors.onAttention : variant === 'danger' ? colors.danger : variant === 'ghost' ? colors.primary : colors.text;
   return (
-    <Pressable
+    <AnimatedPressable
       accessibilityRole="button"
       accessibilityLabel={title}
       accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled: !!off, busy: !!loading }}
       disabled={off}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
       onPress={() => {
         if (variant === 'primary' || variant === 'attention') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         onPress();
       }}
-      style={({ pressed }) => [
+      style={[
         styles.button,
         small && styles.buttonSmall,
         variant === 'primary' && styles.buttonPrimary,
         variant === 'secondary' && styles.buttonSecondary,
         variant === 'danger' && styles.buttonDanger,
         variant === 'attention' && styles.buttonAttention,
-        pressed && styles.pressed,
         off && styles.disabled,
         style,
+        press.animated,
       ]}>
       {loading ? <ActivityIndicator color={fg} size="small" /> : iconName ? <Icon name={iconName} color={fg} size={small ? 16 : 18} /> : null}
       <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={[styles.buttonText, small && { fontSize: 13 }, { color: fg }]}>
         {title}
       </Text>
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
 export function IconButton({ name, label, onPress, color = colors.text, active, disabled }: { name: IconName; label: string; onPress: () => void; color?: string; active?: boolean; disabled?: boolean }) {
+  const press = usePressScale(0.9);
   return (
-    <Pressable
+    <AnimatedPressable
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ selected: !!active, disabled: !!disabled }}
       disabled={disabled}
       onPress={onPress}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
       hitSlop={8}
-      style={({ pressed }) => [styles.iconButton, active && { backgroundColor: colors.surfaceHi }, pressed && styles.pressed, disabled && styles.disabled]}>
+      style={[styles.iconButton, active && { backgroundColor: colors.surfaceHi }, disabled && styles.disabled, press.animated]}>
       <Icon name={name} color={color} size={20} />
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
@@ -346,7 +372,80 @@ export const Loading = ({ label = 'Loading' }: { label?: string }) => (
   </View>
 );
 
+/** Pulsing placeholder block. Mirrors the shape of the content it stands in for, so nothing jumps when data lands. */
+export function Skeleton({ height = 16, width = '100%', radius: r = radius.md, style }: { height?: number; width?: number | `${number}%`; radius?: number; style?: StyleProp<ViewStyle> }) {
+  const reduce = useReducedMotion();
+  const o = useSharedValue(reduce ? 0.6 : 0.45);
+  useEffect(() => {
+    if (reduce) return;
+    o.set(withRepeat(withSequence(withTiming(0.85, { duration: 800, easing: Easing.inOut(Easing.quad) }), withTiming(0.45, { duration: 800, easing: Easing.inOut(Easing.quad) })), -1));
+  }, [reduce, o]);
+  const a = useAnimatedStyle(() => ({ opacity: o.value }));
+  return <Animated.View style={[{ height, width, borderRadius: r, backgroundColor: colors.surfaceHi }, a, style]} />;
+}
+
+/** Skeleton shaped like a ChallengeCard, repeated. Announced once to screen readers. */
+export function CardSkeletons({ count = 3, label = 'Loading' }: { count?: number; label?: string }) {
+  return (
+    <View style={{ gap: space.md }} accessibilityRole="progressbar" accessibilityLabel={label} accessibilityLiveRegion="polite">
+      {Array.from({ length: count }, (_, i) => (
+        <View key={i} style={styles.skelCard} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+          <Row gap={space.md}>
+            <Skeleton height={40} width={40} radius={radius.md} />
+            <View style={{ flex: 1, gap: space.sm }}>
+              <Skeleton height={14} width="70%" />
+              <Skeleton height={11} width="40%" />
+            </View>
+          </Row>
+          <Skeleton height={5} radius={radius.pill} />
+          <Row gap={space.sm}>
+            <Skeleton height={24} width={72} radius={radius.pill} />
+            <Skeleton height={24} width={56} radius={radius.pill} />
+          </Row>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** A friendly dead end: say what is missing, why, and the one thing to do next. */
+type EmptyAction = { title: string; onPress: () => void; variant?: ButtonProps['variant'] };
+export function EmptyState({ title, body, action, secondary, children }: { title: string; body: string; action?: EmptyAction; secondary?: EmptyAction; children?: ReactNode }) {
+  return (
+    <Animated.View entering={FadeInUp.duration(motion.enter).easing(Easing.out(Easing.cubic))} style={styles.empty}>
+      {children}
+      <Heading center accessibilityRole="header">
+        {title}
+      </Heading>
+      <Muted center>{body}</Muted>
+      {action || secondary ? (
+        <Row gap={space.sm} style={{ marginTop: space.xs }}>
+          {action ? <Button small title={action.title} variant={action.variant} onPress={action.onPress} /> : null}
+          {secondary ? <Button small title={secondary.title} variant={secondary.variant ?? 'secondary'} onPress={secondary.onPress} /> : null}
+        </Row>
+      ) : null}
+    </Animated.View>
+  );
+}
+
+/** Something broke: say it in plain words and always offer a way back. */
+export function ErrorState({ message, onRetry, retryLabel = 'Try again' }: { message: string; onRetry?: () => void; retryLabel?: string }) {
+  return (
+    <View style={styles.empty} accessibilityRole="alert">
+      <View style={styles.errorIcon}>
+        <Icon name="wifi-off" color={colors.danger} size={22} />
+      </View>
+      <Heading center>That didn’t load</Heading>
+      <Muted center>{message}</Muted>
+      {onRetry ? <Button small variant="secondary" icon="refresh" title={retryLabel} onPress={onRetry} /> : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  empty: { alignItems: 'center', gap: space.sm, paddingVertical: space.xl, paddingHorizontal: space.lg },
+  errorIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.dangerBg, alignItems: 'center', justifyContent: 'center', marginBottom: space.xs },
+  skelCard: { backgroundColor: colors.surface, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.hairline, padding: space.lg, gap: space.md },
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: colors.bg },
   footer: { paddingHorizontal: space.lg, paddingTop: space.md, gap: space.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, backgroundColor: colors.bg },

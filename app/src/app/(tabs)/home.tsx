@@ -7,7 +7,7 @@ import type { Category, ChallengeView, SearchResponse } from '../../../../lib/ty
 import { ChallengeCard } from '@/components/ChallengeCard';
 import { Butterfingers } from '@/components/Butterfingers';
 import { Avatar, Gradient, Squish } from '@/components/fx';
-import { Banner, Button, Chip, DevnetTag, Heading, Icon, Loading, Muted, Row, Screen, Segmented } from '@/components/ui';
+import { Banner, Button, Chip, DevnetTag, Icon, CardSkeletons, EmptyState, Row, Screen, Segmented } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { coins } from '@/lib/format';
@@ -172,17 +172,15 @@ export default function Home() {
       ) : null}
 
       {shown === null ? (
-        <Loading label="Loading challenges" />
+        <CardSkeletons label="Loading challenges" />
       ) : shown.length === 0 ? (
-        <View style={styles.empty}>
+        <EmptyState
+          title={searchActive ? `Nothing found for “${term}”` : tab === 'mine' ? (filter === 'all' ? 'No bets yet' : 'Nothing in this category') : 'No public challenges live'}
+          body={tab === 'mine' ? 'Start a challenge, join a friend with a code, or browse public challenges.' : 'Create a public challenge and anyone can take the other side.'}
+          action={{ title: 'New challenge', onPress: () => router.push('/create') }}
+          secondary={tab === 'mine' ? { title: 'Browse public', onPress: () => setTab('public') } : undefined}>
           <Butterfingers mood={tab === 'mine' ? 'thinking' : 'idle'} size={110} />
-          <Heading center>{searchActive ? `Nothing found for “${term}”` : tab === 'mine' ? (filter === 'all' ? 'No bets yet' : 'Nothing in this category') : 'No public challenges live'}</Heading>
-          <Muted center>{tab === 'mine' ? 'Start a challenge, join a friend with a code, or browse public challenges.' : 'Create a public challenge and anyone can take the other side.'}</Muted>
-          <Row gap={space.sm}>
-            <Button small title="New challenge" onPress={() => router.push('/create')} />
-            {tab === 'mine' ? <Button small variant="secondary" title="Browse public" onPress={() => setTab('public')} /> : null}
-          </Row>
-        </View>
+        </EmptyState>
       ) : (
         <View style={{ gap: space.md }}>
           {shown.map((c) => (

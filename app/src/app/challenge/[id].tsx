@@ -10,7 +10,7 @@ import { ChallengeCard, StatusChip, onTrack } from '@/components/ChallengeCard';
 import { ResultCard } from '@/components/ResultCard';
 import { ChallengeThread } from '@/components/ChallengeThread';
 import { Avatar, AvatarStack, CategoryMark, Pop, RatingBadge, Sheet, Squish, StarInput, useConfirm, useToast } from '@/components/fx';
-import { Banner, Body, BodyStrong, Button, Card, Chip, Divider, Heading, Icon, IconButton, Loading, Muted, ProgressBar, Row, Screen, Title, TopBar } from '@/components/ui';
+import { Banner, Body, BodyStrong, Button, Card, Chip, Divider, Heading, Icon, IconButton, Loading, CardSkeletons, ErrorState, Muted, ProgressBar, Row, Screen, Title, TopBar } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { goBack } from '@/lib/nav';
 import { useAuth } from '@/lib/auth';
@@ -104,7 +104,7 @@ export default function ChallengeDetail() {
     return (
       <Screen>
         <TopBar onBack={() => goBack('/home')} />
-        {error ? <Banner text={error} /> : <Loading label="Loading challenge" />}
+        {error ? <ErrorState message={error} onRetry={() => void load()} /> : <CardSkeletons count={2} label="Loading challenge" />}
       </Screen>
     );
   }

@@ -1,13 +1,13 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import type { ActivityItem, ChallengeView, FeedView, FriendsView, NotificationView, UserSummary } from '../../../../lib/types';
 import { ChallengeCard } from '@/components/ChallengeCard';
 import { Avatar, CategoryMark, RatingBadge, Squish, useConfirm, useToast } from '@/components/fx';
 import { Butterfingers } from '@/components/Butterfingers';
-import { Banner, Body, BodyStrong, Button, Card, Field, Heading, Icon, Label, Loading, Muted, Row, Screen, Segmented, Title } from '@/components/ui';
+import { Banner, Body, BodyStrong, Button, Card, Field, Heading, Icon, Label, CardSkeletons, EmptyState, Muted, Row, Screen, Segmented, Title } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { coins, timeLeft } from '@/lib/format';
@@ -239,7 +239,7 @@ export default function Friends() {
       {error ? <Banner text={error} /> : null}
 
       {!friends || !feed ? (
-        <Loading label="Loading your squad" />
+        <CardSkeletons count={2} label="Loading your squad" />
       ) : tab === 'live' ? (
         friends.friends.length === 0 ? (
           <EmptySquad onAdd={() => setQ('')} />
@@ -393,14 +393,9 @@ export default function Friends() {
 
 function EmptySquad({ onAdd }: { onAdd: () => void }) {
   return (
-    <View style={styles.empty}>
+    <EmptyState title="Add your first friend" body="Search a username above. Friends can see each other’s bets, join them, and send challenges." action={{ title: 'Search players', onPress: onAdd, variant: 'secondary' }}>
       <Butterfingers mood="nervous" size={110} />
-      <Heading center>Add your first friend</Heading>
-      <Muted center>Search a username above. Friends can see each other’s bets, join them, and send challenges.</Muted>
-      <Text style={styles.emptyHint} onPress={onAdd} accessibilityRole="button">
-        Search players
-      </Text>
-    </View>
+    </EmptyState>
   );
 }
 
