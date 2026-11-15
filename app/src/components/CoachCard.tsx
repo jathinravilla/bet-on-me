@@ -4,7 +4,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 
 import type { CoachResponse } from '../../../lib/types';
 import { Butterfingers } from '@/components/Butterfingers';
-import { Button, Muted, Row } from '@/components/ui';
+import { Button, Chip, Muted, Row } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { LAMPORTS_PER_COIN } from '@/lib/format';
 import { colors, fonts, radius, space } from '@/lib/theme';
@@ -41,6 +41,14 @@ export function CoachCard({ body, maxCoins, onUse }: { body: Record<string, unkn
                 <Text style={styles.verdict}>{advice.verdict}</Text>
               </Row>
               <Text style={styles.tip}>{advice.tip}</Text>
+              {advice.remembered ? (
+                <View style={styles.memory} accessibilityLabel={`Butterfingers remembers: ${advice.remembered}`}>
+                  <Row gap={space.xs}>
+                    <Chip icon="brain" text={advice.memorySource === 'supermemory' ? 'Remembered via Supermemory' : 'Remembered'} tone="primary" />
+                  </Row>
+                  <Text style={styles.memoryText}>{advice.remembered}</Text>
+                </View>
+              ) : null}
             </Animated.View>
           ) : (
             <Text style={styles.tip}>{busy ? 'Hmm, let me look at this goal…' : 'Not sure how much to risk? I’ll check how doable this goal is.'}</Text>
@@ -65,5 +73,7 @@ const styles = StyleSheet.create({
   kicker: { fontFamily: fonts.bodySemi, fontSize: 12, letterSpacing: 0.4, textTransform: 'uppercase', color: colors.primary },
   odds: { fontFamily: fonts.displayHeavy, fontSize: 40, lineHeight: 40, letterSpacing: 0.3, color: colors.text },
   verdict: { fontFamily: fonts.displaySemi, fontSize: 15, color: colors.attention },
+  memory: { gap: space.xs, marginTop: space.xs, paddingTop: space.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  memoryText: { fontFamily: fonts.bodyMedium, fontSize: 14, lineHeight: 20, color: colors.text },
   tip: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: colors.textMuted },
 });

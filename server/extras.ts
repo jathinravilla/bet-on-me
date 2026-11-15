@@ -4,6 +4,7 @@ import type { ChallengeDoc } from "./db";
 import { cols, rateLimit, type UserDoc } from "./db";
 import { balance } from "./chain";
 import { coachGoal, coachStake, commentate, type CoachAdvice, type Commentary } from "./gemini";
+import { backfill, memoryEnabled, memorySentence, recall } from "./memory";
 import { HttpError, type Ctx, oneOf, str } from "./http";
 import { MIN_STAKE_LAMPORTS, tierFor } from "../lib/rules";
 
@@ -112,6 +113,7 @@ export async function similarTo(ch: ChallengeDoc): Promise<ChallengeDoc[]> {
 
 export interface CoachOut extends CoachAdvice {
   suggestedStakeLamports: number;
+  memorySource?: "supermemory" | "history";
 }
 
 function goalText(b: { category: string; mode: string; target?: number; chessTimeControl?: string; dareText?: string; durationMinutes: number }): string {
@@ -138,21 +140,35 @@ export async function coach(ctx: Ctx): Promise<CoachOut> {
   const dareText = typeof b.dareText === "string" ? b.dareText.slice(0, 200) : undefined;
   const chessTimeControl = typeof b.chessTimeControl === "string" ? b.chessTimeControl.slice(0, 10) : undefined;
 
-  const { challenges } = await cols();
-  const past = await challenges.find({ status: "settled", "participants.userId": uid }).sort({ endsAt: -1 }).limit(40).project<Pick<ChallengeDoc, "participants">>({ participants: 1 }).toArray();
+  const { challenges, users } = await cols();
+  const past = await challenges.find({ status: "settled", "settlement.finalStatus": "settled", "participants.userId": uid }).sort({ endsAt: -1 }).limit(40).toArray();
   const played = past.length;
   const completed = past.filter((c) => c.participants.find((p) => p.userId === uid)?.completed).length;
 
+  // First time with memory on: save this player's earlier finished bets once.
+  if (memoryEnabled() && !user.memorySyncedAt && past.length > 0 && (await backfill(uid, past))) {
+    await users.updateOne({ _id: user._id }, { $set: { memorySyncedAt: new Date() } });
+  }
+  const goal = goalText({ category, mode, target, chessTimeControl, dareText, durationMinutes: duration });
+  const fromSupermemory = await recall(uid, `${category} ${title} ${goal}`);
+  // Our own record is always available, so the coach remembers even if Supermemory is off or slow.
+  const fromHistory = past.slice(0, 5).flatMap((c) => memorySentence(c, uid) ?? []);
+  const memories = [...new Set([...fromSupermemory, ...fromHistory])].slice(0, 8);
+
   let advice: CoachAdvice;
   try {
-    advice = await coachGoal({ category, title, description, goal: goalText({ category, mode, target, chessTimeControl, dareText, durationMinutes: duration }), played, completed });
+    advice = await coachGoal({ category, title, description, goal, played, completed, memories });
   } catch (e) {
     console.error("coach failed:", e instanceof Error ? e.message : e);
     throw new HttpError(502, "Butterfingers is busy right now. You can still pick a stake yourself.");
   }
   const bal = await balance(user.wallet.publicKey).catch(() => 0);
   const max = Math.max(MIN_STAKE_LAMPORTS, Math.min(tierFor(user.points).current.maxStakeLamports, Math.floor(bal / COIN) * COIN));
-  return { ...advice, suggestedStakeLamports: coachStake(advice.odds, MIN_STAKE_LAMPORTS, max) };
+  return {
+    ...advice,
+    suggestedStakeLamports: coachStake(advice.odds, MIN_STAKE_LAMPORTS, max),
+    memorySource: advice.remembered ? (fromSupermemory.length > 0 ? "supermemory" : "history") : undefined,
+  };
 }
 
 // ---------- Butterfingers the commentator ----------

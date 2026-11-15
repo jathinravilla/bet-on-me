@@ -7,6 +7,7 @@ import { sha256 } from "./crypto";
 import { cols, type ChallengeDoc, type DareProofDoc, type ParticipantDoc, type UserDoc } from "./db";
 import { chessRating, duolingoXp, githubContributionsSince, githubWindowStart, stravaMiles } from "./external";
 import { postEvent, fmt } from "./events";
+import { rememberSettled } from "./memory";
 import { HttpError } from "./http";
 
 const SYNC_CACHE_MS = 60_000;
@@ -368,6 +369,7 @@ export async function settleChallenge(
       const input = settleInput(ch);
       const deltas = settlementPoints(input, { outcome: s.outcome, winners: s.winners, payouts: [], reason: "" });
       await Promise.all(Object.entries(deltas).map(([userId, d]) => addPoints(userId, d)));
+      await rememberSettled(ch); // best-effort: never blocks or fails a settlement
     }
   }
 

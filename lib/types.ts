@@ -261,6 +261,10 @@ export interface CoachResponse {
   verdict: string;
   tip: string;
   suggestedStakeLamports: number;
+  /** One first-person sentence about something Butterfingers remembers from this player's past bets. Empty if nothing relevant. */
+  remembered?: string;
+  /** Where the memory came from: Supermemory's recall, or just our own record of past bets. */
+  memorySource?: "supermemory" | "history";
 }
 
 export interface SearchResponse {

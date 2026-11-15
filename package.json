@@ -2,7 +2,7 @@
   "name": "bet-on-me",
   "version": "1.0.0",
   "private": true,
-  "description": "Bet On Me \u2014 backend (Vercel serverless) for sunhacks 2026",
+  "description": "Bet On Me — backend (Vercel serverless) for sunhacks 2026",
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=.env.local server/dev.ts",
     "test": "tsx --test server/tests/*.test.ts",
@@ -19,7 +19,8 @@
     "@solana/web3.js": "^1.99.0",
     "@vercel/blob": "^2.9.0",
     "bs58": "^5.0.0",
-    "mongodb": "^7.9.0"
+    "mongodb": "^7.9.0",
+    "supermemory": "^5.1.2"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
