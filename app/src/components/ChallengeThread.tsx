@@ -19,8 +19,16 @@ const EVENT_ICON: Record<ThreadEventType, IconName> = {
   lead: 'crown-outline',
   proof: 'video-outline',
   settled: 'flag-checkered',
+  ending: 'timer-sand',
+  coach: 'chat-processing-outline',
   nudge: 'bell-ring-outline',
   backed: 'thumb-up-outline',
+};
+
+const merge = (m: Record<string, ThreadItem>, list: ThreadItem[]) => {
+  const next = { ...m };
+  for (const it of list) next[it.id] = it;
+  return next;
 };
 
 export function ago(iso: string, now = Date.now()) {
@@ -64,7 +72,8 @@ export function ChallengeThread({
   const toast = useToast();
   const confirm = useConfirm();
   const [thread, setThread] = useState<ThreadView | null>(null);
-  const [older, setOlder] = useState<ThreadItem[]>([]);
+  // Every item seen so far, keyed by id: polls and "show older" both merge in, nothing gets dropped.
+  const [byId, setById] = useState<Record<string, ThreadItem>>({});
   const [olderCursor, setOlderCursor] = useState<string | undefined>(undefined);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [draft, setDraft] = useState('');
@@ -80,6 +89,7 @@ export function ChallengeThread({
     try {
       const t = await api<ThreadView>(`/challenges/${challengeId}/thread`);
       setThread(t);
+      setById((m) => merge(m, t.items));
       if (!fetchedOlder.current) setOlderCursor(t.nextBefore);
     } catch (e) {
       setError(errorMessage(e));
@@ -100,7 +110,7 @@ export function ChallengeThread({
     try {
       const t = await api<ThreadView>(`/challenges/${challengeId}/thread?before=${olderCursor}`);
       fetchedOlder.current = true;
-      setOlder((o) => [...o, ...t.items]);
+      setById((m) => merge(m, t.items));
       setOlderCursor(t.nextBefore);
     } catch (e) {
       toast(errorMessage(e), 'danger');
@@ -153,8 +163,8 @@ export function ChallengeThread({
   const suggestions = tail ? players.filter((p) => p.toLowerCase().startsWith(tail[1].toLowerCase()) && p.toLowerCase() !== tail[1].toLowerCase()).slice(0, 4) : [];
 
   if (!thread) return null;
-  const seen = new Set(thread.items.map((i) => i.id));
-  const items = [...thread.items, ...older.filter((i) => !seen.has(i.id))];
+  // Ids are Mongo ObjectIds: same length, time-prefixed, so string order is chronological.
+  const items = Object.values(byId).sort((a, z) => (a.id < z.id ? 1 : a.id > z.id ? -1 : 0));
   const b = thread.backing;
 
   return (
@@ -265,6 +275,9 @@ export function ChallengeThread({
 
       {/* Feed */}
       <View>
+        {(thread.banners ?? []).map((e) => (
+          <EventRow key={e.id} e={e} />
+        ))}
         {items.length === 0 ? <Muted>No messages yet. Start the trash talk.</Muted> : null}
         {items.map((it) =>
           it.kind === 'event' ? <EventRow key={it.id} e={it} /> : <CommentRow key={it.id} c={it} onReply={() => startReply(it)} onMenu={() => setMenu(it)} />
@@ -321,7 +334,7 @@ function EventRow({ e }: { e: ThreadEventView }) {
   return (
     <View style={styles.event} accessible accessibilityLabel={`${e.text}, ${ago(e.at)} ago`}>
       <View style={styles.eventIcon}>
-        <Icon name={EVENT_ICON[e.type] ?? 'information-outline'} size={14} color={e.type === 'nudge' ? colors.attention : colors.primary} />
+        <Icon name={EVENT_ICON[e.type] ?? 'information-outline'} size={14} color={e.type === 'nudge' || e.type === 'ending' ? colors.attention : colors.primary} />
       </View>
       <Text style={styles.eventText}>{e.text}</Text>
       <Text style={styles.time}>{ago(e.at)}</Text>

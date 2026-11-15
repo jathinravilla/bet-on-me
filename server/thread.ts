@@ -120,8 +120,18 @@ export async function getThread(ctx: Ctx): Promise<ThreadView> {
   if (!before && (ctx.user.threadSeen?.[cid] ?? 0) !== count) {
     await users.updateOne({ _id: ctx.user._id }, { $set: { [`threadSeen.${cid}`]: count } });
   }
+  const banners: ThreadEventView[] = [];
+  const left = ch.endsAt.getTime() - Date.now();
+  if (live(ch) && left < 3600_000) {
+    banners.push({ kind: "event", id: `ending-${cid}`, type: "ending", text: `Ends in ${Math.max(1, Math.round(left / 60_000))} min — last chance to move up`, at: new Date().toISOString() });
+  }
+  const quip = ch.settlement?.commentary;
+  if (ch.status === "settled" && quip) {
+    banners.push({ kind: "event", id: `coach-${cid}`, type: "coach", text: `Coach: ${quip.winner}`, at: (ch.settlement?.settledAt ?? ch.endsAt).toISOString() });
+  }
   return {
     items,
+    banners,
     nextBefore: docs.length > PAGE ? page[page.length - 1]._id.toHexString() : undefined,
     pinned: pinnedDoc && !pinnedDoc.deleted && !pinnedDoc.hidden ? commentView(pinnedDoc, ch, ctx.user, people) : undefined,
     backing: await backingView(ch, ctx.user),

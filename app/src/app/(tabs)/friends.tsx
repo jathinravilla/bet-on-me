@@ -176,7 +176,7 @@ export default function Friends() {
   const openTab = (t: Tab) => {
     setTab(t);
     // Opening the inbox marks mentions, replies and nudges as seen (they stay listed).
-    if (t === 'requests' && unseenNotes > 0) {
+    if (t === 'requests' && (unseenNotes > 0 || (me?.pendingNotifications ?? 0) > 0)) {
       void api('/notifications/read', { method: 'POST' })
         .then(() => {
           setNotes((list) => list.map((n) => ({ ...n, seen: true })));

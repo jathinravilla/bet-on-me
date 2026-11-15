@@ -393,6 +393,19 @@ test("threads: comments, replies, mentions, unread counts, moderation, pins, bac
   assert.equal((await call("POST", `/challenges/${ch.id}/nudge`, a.token, { userId: b.me.id })).status, 429);
   assert.ok((await call<{ kind: string }[]>("GET", "/notifications", b.token)).data.some((n) => n.kind === "nudge"));
 
+  // Paging: ?before= returns strictly older items, with no overlap.
+  const f = await login("th_fay");
+  await call("POST", "/friends/request", f.token, { username: "th_amy" });
+  await call("POST", "/friends/respond", a.token, { userId: f.me.id, accept: true });
+  for (const x of [c, e, f]) for (let i = 0; i < 8; i++) assert.equal((await call("POST", `/challenges/${ch.id}/comments`, x.token, { text: `cheer ${i}` })).status, 200);
+  const p1 = (await call<Thread & { nextBefore?: string }>("GET", `/challenges/${ch.id}/thread`, a.token)).data;
+  assert.equal(p1.items.length, 30);
+  assert.ok(p1.nextBefore);
+  const p2 = (await call<Thread & { nextBefore?: string }>("GET", `/challenges/${ch.id}/thread?before=${p1.nextBefore}`, a.token)).data;
+  assert.ok(p2.items.length > 0);
+  assert.ok(p2.items.every((i) => i.id < p1.items[p1.items.length - 1].id));
+  assert.equal(new Set([...p1.items, ...p2.items].map((i) => i.id)).size, p1.items.length + p2.items.length);
+
   // Progress and settlement updates land in the thread, once each.
   await call("POST", "/demo/simulate-progress", b.token, { challengeId: ch.id, amount: 2 });
   await call("POST", "/demo/simulate-progress", b.token, { challengeId: ch.id, amount: 0 }); // no change -> no new update

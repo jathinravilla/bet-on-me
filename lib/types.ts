@@ -270,7 +270,7 @@ export interface CommentaryResponse {
 
 // ---------- Challenge threads (comments + live bet updates) ----------
 
-export type ThreadEventType = "started" | "joined" | "progress" | "completed" | "lead" | "proof" | "settled" | "nudge" | "backed";
+export type ThreadEventType = "started" | "joined" | "progress" | "completed" | "lead" | "proof" | "settled" | "nudge" | "backed" | "ending" | "coach";
 
 export interface CommentAuthor {
   id: string;
@@ -315,6 +315,7 @@ export interface BackingView {
 
 export interface ThreadView {
   items: ThreadItem[]; // newest first
+  banners: ThreadEventView[]; // live notes shown above the feed ("Ends in 40 min", the coach's wrap-up)
   nextBefore?: string; // pass as ?before= for older items
   pinned?: CommentView;
   backing: BackingView;
