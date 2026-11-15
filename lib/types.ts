@@ -1,7 +1,7 @@
 // Shared API types used by both the backend (/server, /api) and the Expo app (/app).
 // The app must only `import type` from here so nothing in /lib is bundled by Metro.
 
-export type Category = "strava" | "chess" | "dare";
+export type Category = "strava" | "chess" | "dare" | "github" | "duolingo";
 export type Visibility = "friends" | "public";
 export type Mode = "target" | "open";
 export type ChallengeStatus = "active" | "settling" | "settled" | "banned";
@@ -141,6 +141,8 @@ export interface MeView {
   points: number;
   wallet: { publicKey: string; balanceLamports: number; funded: boolean };
   chessUsername?: string;
+  githubUsername?: string;
+  duolingoUsername?: string;
   stravaConnected: boolean;
   stravaDemo: boolean; // true = simulated Strava (no real Strava API app configured)
   limits: LimitsView;

@@ -418,6 +418,70 @@ test("threads: comments, replies, mentions, unread counts, moderation, pins, bac
   assert.equal((await call("POST", `/challenges/${ch.id}/back`, d.token, { userId: b.me.id })).status, 404);
 });
 
+test("GitHub and Duolingo challenges count what you gain after joining", async () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const fakes = { github: { "gh-amy": { "2025-01-01": 900, [today]: 3 }, "gh-bo": { [today]: 0 } } as Record<string, Record<string, number>>, duolingo: { duo_amy: 50_000, duo_bo: 1_200 } as Record<string, number> };
+  (globalThis as { __betonmeFakes?: unknown }).__betonmeFakes = fakes;
+  try {
+    const a = await login("gd_amy");
+    const b = await login("gd_bo");
+
+    // Linking checks the account exists.
+    assert.equal((await call("POST", "/me/github", a.token, { username: "nobody-here" })).status, 404);
+    assert.equal((await call("POST", "/me/github", a.token, { username: "bad name!" })).status, 400);
+    assert.equal((await call<MeView>("POST", "/me/github", a.token, { username: "gh-amy" })).data.githubUsername, "gh-amy");
+    await call("POST", "/me/github", b.token, { username: "gh-bo" });
+
+    // You must link before creating; old history (900 contributions) never counts.
+    const c = await login("gd_cy");
+    assert.equal((await call("POST", "/challenges", c.token, strava({ category: "github", mode: "target", target: 5 }))).status, 400);
+    const gh = (await call<ChallengeView>("POST", "/challenges", a.token, strava({ category: "github", mode: "target", target: 5 }))).data;
+    assert.equal(gh.participants[0].progress, 0);
+    await call("POST", "/challenges/join", b.token, { inviteCode: gh.inviteCode });
+
+    // amy makes 6 more contributions today; bo makes 2.
+    fakes.github["gh-amy"][today] = 9;
+    fakes.github["gh-bo"][today] = 2;
+    const synced = (await call<ChallengeView>("POST", `/challenges/${gh.id}/sync`, a.token)).data;
+    const amy = synced.participants.find((p) => p.username === "gd_amy")!;
+    const bo = synced.participants.find((p) => p.username === "gd_bo")!;
+    assert.equal(amy.progress, 6);
+    assert.equal(amy.completed, true);
+    assert.equal(bo.progress, 2);
+    const th = (await call<{ items: { type?: string; text: string }[] }>("GET", `/challenges/${gh.id}/thread`, a.token)).data;
+    assert.ok(th.items.some((i) => i.type === "progress" && /made \+6 contributions/.test(i.text)));
+    await call("POST", "/demo/end-now", a.token, { challengeId: gh.id });
+    const done = (await call<ChallengeView>("GET", `/challenges/${gh.id}`, a.token)).data;
+    assert.deepEqual(done.settlement?.winners, [a.me.id]);
+
+    // Duolingo: most XP gained wins; a read failure on join is refused, not treated as zero.
+    assert.equal((await call<MeView>("POST", "/me/duolingo", a.token, { username: "duo_amy" })).data.duolingoUsername, "duo_amy");
+    await call("POST", "/me/duolingo", b.token, { username: "duo_bo" });
+    const duo = (await call<ChallengeView>("POST", "/challenges", a.token, strava({ category: "duolingo", mode: "open" }))).data;
+    delete fakes.duolingo.duo_bo;
+    assert.equal((await call("POST", "/challenges/join", b.token, { inviteCode: duo.inviteCode })).status, 502);
+    fakes.duolingo.duo_bo = 1_200;
+    await call("POST", "/challenges/join", b.token, { inviteCode: duo.inviteCode });
+    fakes.duolingo.duo_amy += 120;
+    fakes.duolingo.duo_bo += 300;
+    const d2 = (await call<ChallengeView>("POST", `/challenges/${duo.id}/sync`, b.token)).data;
+    assert.equal(d2.participants[0].username, "gd_bo");
+    assert.equal(d2.participants[0].progress, 300);
+    assert.equal(d2.participants[1].progress, 120);
+
+    // Tapping Sync again right away re-reads your numbers (no stale cache).
+    fakes.duolingo.duo_bo += 40;
+    assert.equal((await call<ChallengeView>("POST", `/challenges/${duo.id}/sync`, b.token)).data.participants.find((p) => p.username === "gd_bo")!.progress, 340);
+
+    // Re-linking to a bigger account mid-bet changes nothing: progress is read from the account you joined with.
+    fakes.duolingo.duo_whale = 900_000;
+    await call("POST", "/me/duolingo", b.token, { username: "duo_whale" });
+    assert.equal((await call<ChallengeView>("POST", `/challenges/${duo.id}/sync`, b.token)).data.participants.find((p) => p.username === "gd_bo")!.progress, 340);
+  } finally {
+    delete (globalThis as { __betonmeFakes?: unknown }).__betonmeFakes;
+  }
+});
+
 test("sign-ups are rate limited per IP", async () => {
   const statuses: number[] = [];
   for (let i = 0; i < 10; i++) {

@@ -119,6 +119,8 @@ function goalText(b: { category: string; mode: string; target?: number; chessTim
   const span = b.durationMinutes < 1440 ? `${b.durationMinutes} minutes` : `${days} day${days === 1 ? "" : "s"}`;
   if (b.category === "dare") return `Complete this dare within ${span}: ${b.dareText ?? ""}`;
   if (b.category === "strava") return b.mode === "target" ? `Run or walk ${b.target} miles within ${span}` : `Log the most running miles within ${span}, competing against friends`;
+  if (b.category === "github") return b.mode === "target" ? `Make ${b.target} GitHub contributions (commits, PRs, issues, reviews) within ${span}` : `Make the most GitHub contributions within ${span}, competing against friends`;
+  if (b.category === "duolingo") return b.mode === "target" ? `Earn ${b.target} Duolingo XP within ${span}` : `Earn the most Duolingo XP within ${span}, competing against friends`;
   return b.mode === "target" ? `Reach a ${b.target} ${b.chessTimeControl ?? "rapid"} chess.com rating within ${span}` : `Gain the most ${b.chessTimeControl ?? "rapid"} chess.com rating within ${span}, competing against friends`;
 }
 
@@ -127,7 +129,7 @@ export async function coach(ctx: Ctx): Promise<CoachOut> {
   const uid = user._id.toHexString();
   await rateLimit(`coach:${uid}`, 20, 3600);
   const b = ctx.body;
-  const category = oneOf(b.category, "Category", ["strava", "chess", "dare"] as const);
+  const category = oneOf(b.category, "Category", ["strava", "chess", "dare", "github", "duolingo"] as const);
   const mode = category === "dare" ? "target" : oneOf(b.mode, "Mode", ["target", "open"] as const);
   const title = str(b.title ?? "My challenge", "Title", 1, 60);
   const description = typeof b.description === "string" ? b.description.slice(0, 280) : "";

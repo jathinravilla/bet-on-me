@@ -18,7 +18,7 @@ import { WEB_URL, shareCard, shareText } from '@/lib/share';
 import { endingSoon, explorerAddress, explorerTx, goalLine, isRealSig, progressLabel, progressRatio, coins, timeLeft } from '@/lib/format';
 import { connectStrava } from '@/lib/connect';
 import { useNow } from '@/lib/useNow';
-import { categoryMeta, colors, fonts, radius, space } from '@/lib/theme';
+import { colors, fonts, radius, space, metaOf } from '@/lib/theme';
 
 const open = (url: string) => void Linking.openURL(url).catch(() => {});
 
@@ -109,7 +109,7 @@ export default function ChallengeDetail() {
     );
   }
 
-  const meta = categoryMeta[c.category];
+  const meta = metaOf(c.category);
   const mine = c.participants.find((p) => p.userId === me.id);
   const live = c.status === 'active' && !ended;
   const canNudge = (p: ChallengeView['participants'][number]) => live && c.joined && p.userId !== me.id && !p.completed;
@@ -372,7 +372,15 @@ export default function ChallengeDetail() {
                       ? 'Demo Strava: log a simulated GPS run to add miles.'
                       : "Record a run or walk with the Strava app, then sync. Manual activities don't count."
                     : 'Connect Strava so your miles count.'
-                  : c.category === 'chess'
+                  : c.category === 'github'
+                    ? me.githubUsername
+                      ? 'Commit, open PRs, review — then sync. GitHub’s calendar can take a few minutes to update.'
+                      : 'Link your GitHub username on your profile so your contributions count.'
+                    : c.category === 'duolingo'
+                      ? me.duolingoUsername
+                        ? 'Do your Duolingo lessons, then sync your XP.'
+                        : 'Link your Duolingo username on your profile so your XP counts.'
+                      : c.category === 'chess'
                     ? `Play ${c.chessTimeControl ?? 'rapid'} games on chess.com, then sync your rating.`
                     : mine?.completed
                       ? 'Your proof was approved.'
@@ -414,7 +422,7 @@ export default function ChallengeDetail() {
                 }
               />
             ) : (
-              <Button small title={c.category === 'strava' ? 'Sync runs' : 'Sync rating'} loading={busy === 'sync'} style={styles.flex} onPress={() => void act('sync', () => api<ChallengeView>(`/challenges/${c.id}/sync`, { method: 'POST' }))} />
+              <Button small title={c.category === 'strava' ? 'Sync runs' : c.category === 'github' ? 'Sync contributions' : c.category === 'duolingo' ? 'Sync XP' : 'Sync rating'} loading={busy === 'sync'} style={styles.flex} onPress={() => void act('sync', () => api<ChallengeView>(`/challenges/${c.id}/sync`, { method: 'POST' }))} />
             )}
             <Button small variant="secondary" title="Invite friends" style={styles.flex} onPress={() => void openInvite()} />
           </Row>
@@ -514,9 +522,9 @@ export default function ChallengeDetail() {
             <Button
               small
               variant="secondary"
-              title={c.category === 'strava' ? 'Simulate +2 miles' : 'Simulate +25 rating'}
+              title={c.category === 'strava' ? 'Simulate +2 miles' : c.category === 'github' ? 'Simulate +3 contributions' : c.category === 'duolingo' ? 'Simulate +50 XP' : 'Simulate +25 rating'}
               loading={busy === 'sim'}
-              onPress={() => void act('sim', () => api<ChallengeView>('/demo/simulate-progress', { body: { challengeId: c.id, amount: c.category === 'strava' ? 2 : 25 } }))}
+              onPress={() => void act('sim', () => api<ChallengeView>('/demo/simulate-progress', { body: { challengeId: c.id, amount: c.category === 'strava' ? 2 : c.category === 'github' ? 3 : c.category === 'duolingo' ? 50 : 25 } }))}
             />
           ) : null}
           <Button

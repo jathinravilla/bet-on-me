@@ -15,10 +15,11 @@ import { api, errorMessage } from '@/lib/api';
 import { goBack } from '@/lib/nav';
 import { useAuth } from '@/lib/auth';
 import { WEB_URL, shareText } from '@/lib/share';
-import { connectStrava, linkChess } from '@/lib/connect';
+import { connectStrava, linkChess, linkDuolingo, linkGithub } from '@/lib/connect';
+import { DUOLINGO_NOTE, GITHUB_NOTE, LinkAppCard } from '@/components/LinkAppCard';
 import { coins, coinsToLamports } from '@/lib/format';
 import { UPCOMING } from '@/lib/integrations';
-import { categoryMeta, colors, fonts, radius, space } from '@/lib/theme';
+import { colors, fonts, radius, space, metaOf } from '@/lib/theme';
 
 const STAKES = [10, 25, 50, 100, 250, 500, 1000, 2000]; // coins
 const DURATIONS = [
@@ -33,7 +34,46 @@ const GUIDELINES =
   'No dares involving danger or injury, anything illegal, alcohol or drugs, sexual content, filming or bothering people without consent, property damage, or targeting a specific person. Keep it funny, harmless and safe.';
 
 type Kind = Category | 'custom';
-type Source = 'strava' | 'chess' | 'video';
+type Source = 'strava' | 'chess' | 'video' | 'github' | 'duolingo';
+
+/** Username-linked apps scored as "gained since joining". */
+const APPS = {
+  github: {
+    name: 'GitHub',
+    icon: 'github',
+    targetLabel: 'Target contributions',
+    placeholder: '30',
+    quick: [10, 25, 50, 100, 200],
+    min: 1,
+    max: 2000,
+    titleHint: 'Ship it week',
+    hint: 'Counted from your public GitHub contribution calendar: commits, pull requests, issues and reviews.',
+    openBanner: 'Most GitHub contributions (commits, PRs, issues, reviews) from now until the end wins the whole pot.',
+    mostSubtitle: 'Whoever makes the most contributions takes it all.',
+    connectBody: 'We read your public contribution calendar — no GitHub sign-in needed. Contributions made after you join count.',
+    choice: 'Commits, PRs and reviews from your public GitHub calendar.',
+    review: (target: string, open: boolean) => (open ? 'Most GitHub contributions wins' : `Make ${target} GitHub contributions`),
+    proof: 'GitHub calendar',
+  },
+  duolingo: {
+    name: 'Duolingo',
+    icon: 'owl',
+    targetLabel: 'Target XP',
+    placeholder: '500',
+    quick: [100, 250, 500, 1000, 2500],
+    min: 10,
+    max: 100000,
+    titleHint: 'Duolingo XP week',
+    hint: 'XP earned after you join, read from your public Duolingo profile.',
+    openBanner: 'Most Duolingo XP earned from now until the end wins the whole pot.',
+    mostSubtitle: 'Whoever earns the most XP takes it all.',
+    connectBody: 'We read the XP on your public Duolingo profile — no Duolingo sign-in needed. Your profile must be public.',
+    choice: 'XP earned on your public Duolingo profile.',
+    review: (target: string, open: boolean) => (open ? 'Most Duolingo XP wins' : `Earn ${Number(target).toLocaleString()} Duolingo XP`),
+    proof: 'Duolingo XP',
+  },
+} as const satisfies Record<string, { icon: IconName; quick: readonly number[] } & Record<string, unknown>>;
+const isApp = (c: string): c is keyof typeof APPS => c === 'github' || c === 'duolingo';
 type Step = 'category' | 'custom' | 'connect' | 'mode' | 'goal' | 'stake' | 'duration' | 'squad';
 
 type Template = {
@@ -55,6 +95,10 @@ const TEMPLATES: Template[] = [
   { key: 'war', title: 'Mileage war', blurb: 'Most miles in a week takes it all', icon: 'sword-cross', category: 'strava', mode: 'open', minutes: 10080 },
   { key: '1200', title: 'Road to 1200', blurb: 'Reach 1200 rapid in 2 weeks', icon: 'chess-queen', category: 'chess', mode: 'target', target: 1200, tc: 'rapid', minutes: 20160 },
   { key: 'climb', title: 'Blitz climb', blurb: 'Biggest blitz rating gain wins', icon: 'trending-up', category: 'chess', mode: 'open', tc: 'blitz', minutes: 10080 },
+  { key: 'ship', title: 'Ship it week', blurb: '25 GitHub contributions in 7 days', icon: 'source-commit', category: 'github', mode: 'target', target: 25, minutes: 10080 },
+  { key: 'commitwar', title: 'Commit war', blurb: 'Most GitHub contributions wins', icon: 'github', category: 'github', mode: 'open', minutes: 10080 },
+  { key: 'xp', title: '1,000 XP week', blurb: 'Earn 1,000 Duolingo XP in 7 days', icon: 'owl', category: 'duolingo', mode: 'target', target: 1000, minutes: 10080 },
+  { key: 'xpwar', title: 'XP showdown', blurb: 'Most Duolingo XP in 3 days wins', icon: 'translate', category: 'duolingo', mode: 'open', minutes: 4320 },
   { key: 'cold', title: 'Cold shower dare', blurb: '60 seconds, ice cold, on camera', icon: 'snowflake', category: 'dare', mode: 'target', dare: 'Take a 60 second ice-cold shower (film your face and the water, keep it PG).', minutes: 1440 },
   { key: 'pushups', title: '50 push-up dare', blurb: '50 in one set, on video', icon: 'arm-flex', category: 'dare', mode: 'target', dare: 'Do 50 push-ups in one set without stopping, counting out loud on camera.', minutes: 2880 },
   { key: 'moonwalk', title: 'Moonwalk across the room', blurb: 'Wall to wall, no turning', icon: 'shoe-print', category: 'dare', mode: 'target', dare: 'Moonwalk across a room from one wall to the other without turning around, on camera.', minutes: 1440 },
@@ -103,7 +147,9 @@ export default function Create() {
   if (!me) return null;
 
   const category: Category = kind === 'custom' ? (source === 'video' ? 'dare' : source) : kind;
-  const needsConnect = (category === 'chess' && !me.chessUsername) || (category === 'strava' && !me.stravaConnected);
+  const needsLink = (c: Category) =>
+    (c === 'chess' && !me.chessUsername) || (c === 'strava' && !me.stravaConnected) || (c === 'github' && !me.githubUsername) || (c === 'duolingo' && !me.duolingoUsername);
+  const needsConnect = needsLink(category);
   const stepsFor = (k: Kind, cat: Category, connect: boolean): Step[] => {
     const s: Step[] = ['category'];
     if (k === 'custom') s.push('custom');
@@ -131,7 +177,7 @@ export default function Create() {
     if (t.tc) setTc(t.tc);
     setDareText(t.dare ?? '');
     setMinutes(t.minutes);
-    const connect = (t.category === 'chess' && !me.chessUsername) || (t.category === 'strava' && !me.stravaConnected);
+    const connect = needsLink(t.category);
     const s = stepsFor(t.category, t.category, connect);
     setIndex(s.indexOf(connect ? 'connect' : 'stake'));
   };
@@ -142,7 +188,7 @@ export default function Create() {
       if (goal.trim().length < 10) return 'Describe the goal in at least 10 characters so everyone knows what counts.';
       if (source === 'video' && goal.trim().length > 200) return 'Keep a video-proof goal under 200 characters.';
     }
-    if (step === 'connect' && needsConnect) return category === 'chess' ? 'Link your chess.com username to continue.' : 'Connect Strava to continue.';
+    if (step === 'connect' && needsConnect) return isApp(category) ? `Link your ${APPS[category].name} username to continue.` : category === 'chess' ? 'Link your chess.com username to continue.' : 'Connect Strava to continue.';
     if (step === 'goal') {
       if (title.trim().length < 3) return 'Give your challenge a name (at least 3 characters).';
       if (category === 'dare') return dareText.trim().length < 10 ? 'Describe the dare in at least 10 characters.' : null;
@@ -150,6 +196,9 @@ export default function Create() {
       if (!Number.isFinite(targetNum) || target.trim() === '') return 'Enter a number for the goal.';
       if (category === 'strava' && (targetNum < 0.1 || targetNum > 500)) return 'Miles must be between 0.1 and 500.';
       if (category === 'chess' && (!Number.isInteger(targetNum) || targetNum < 100 || targetNum > 3500)) return 'Rating must be a whole number between 100 and 3500.';
+      if (isApp(category) && (!Number.isInteger(targetNum) || targetNum < APPS[category].min || targetNum > APPS[category].max)) {
+        return `${APPS[category].targetLabel.replace('Target ', '')} must be a whole number between ${APPS[category].min} and ${APPS[category].max.toLocaleString()}.`;
+      }
     }
     if (step === 'stake') {
       if (!Number.isInteger(stake) || stake < 10) return 'The minimum stake is 10 coins.';
@@ -300,7 +349,7 @@ export default function Create() {
           />
         </>
       }>
-      <TopBar title={index === 0 ? 'New bet' : kind === 'custom' ? 'Custom bet' : `${categoryMeta[category].label} bet`} onBack={back} right={index > 0 ? <Text style={styles.stepCount}>{index + 1}/{steps.length}</Text> : undefined} />
+      <TopBar title={index === 0 ? 'New bet' : kind === 'custom' ? 'Custom bet' : `${metaOf(category).label} bet`} onBack={back} right={index > 0 ? <Text style={styles.stepCount}>{index + 1}/{steps.length}</Text> : undefined} />
       <View style={styles.dots} accessibilityRole="progressbar" accessibilityLabel={`Step ${index + 1} of ${steps.length}`} accessibilityValue={{ min: 1, max: steps.length, now: index + 1 }}>
         {steps.map((s, i) => (
           <View key={s} style={styles.dot}>
@@ -337,6 +386,8 @@ export default function Create() {
             <View style={{ gap: space.md }} accessibilityRole="radiogroup">
               <Choice icon="chess-knight" title="Chess" subtitle="Your live chess.com rating is the proof." selected={kind === 'chess'} onPress={() => setKind('chess')} />
               <Choice icon="run-fast" title="Running" subtitle="Strava GPS miles. Typed-in activities don't count." selected={kind === 'strava'} onPress={() => setKind('strava')} />
+              <Choice icon="github" title="GitHub" subtitle={APPS.github.choice} selected={kind === 'github'} onPress={() => setKind('github')} right={<Chip text="New" tone="primary" />} />
+              <Choice icon="owl" title="Duolingo" subtitle={APPS.duolingo.choice} selected={kind === 'duolingo'} onPress={() => setKind('duolingo')} right={<Chip text="New" tone="primary" />} />
               <Choice icon="drama-masks" title="Dare" subtitle="Record a video. AI and your friends judge it." selected={kind === 'dare'} onPress={() => setKind('dare')} />
               <Choice icon="creation" title="Custom" subtitle="Your goal, your rules. Pick how we verify it." selected={kind === 'custom'} onPress={() => setKind('custom')} right={<Chip text="New" tone="primary" />} />
             </View>
@@ -376,6 +427,22 @@ export default function Create() {
                 onPress={() => setSource('chess')}
                 right={me.chessUsername ? <Chip text="Linked" tone="success" icon="check" /> : undefined}
               />
+              <Choice
+                icon="github"
+                title="GitHub"
+                subtitle={me.githubUsername ? `Linked as ${me.githubUsername} · contributions counted` : 'Link next — contributions are counted'}
+                selected={source === 'github'}
+                onPress={() => setSource('github')}
+                right={me.githubUsername ? <Chip text="Linked" tone="success" icon="check" /> : undefined}
+              />
+              <Choice
+                icon="owl"
+                title="Duolingo"
+                subtitle={me.duolingoUsername ? `Linked as ${me.duolingoUsername} · XP counted` : 'Link next — XP is counted'}
+                selected={source === 'duolingo'}
+                onPress={() => setSource('duolingo')}
+                right={me.duolingoUsername ? <Chip text="Linked" tone="success" icon="check" /> : undefined}
+              />
             </View>
             <Card>
               <Label>More apps coming — vote to unlock</Label>
@@ -399,14 +466,18 @@ export default function Create() {
 
         {step === 'connect' ? (
           <>
-            <Title>{category === 'chess' ? 'Link chess.com' : 'Connect Strava'}</Title>
-            <Muted>{category === 'chess' ? 'We read your public rating straight from chess.com, so nobody can fake it.' : 'Only GPS-recorded runs and walks from Strava count toward the pot. Typed-in activities are ignored.'}</Muted>
+            <Title>{isApp(category) ? `Link ${APPS[category].name}` : category === 'chess' ? 'Link chess.com' : 'Connect Strava'}</Title>
+            <Muted>{isApp(category) ? APPS[category].connectBody : category === 'chess' ? 'We read your public rating straight from chess.com, so nobody can fake it.' : 'Only GPS-recorded runs and walks from Strava count toward the pot. Typed-in activities are ignored.'}</Muted>
             <View style={styles.connectHero}>
               <CategoryMark category={category} size={44} />
               <Icon name="swap-horizontal" color={colors.textDim} size={20} />
               <Logo size={44} wordmark={false} />
             </View>
-            {category === 'chess' ? (
+            {category === 'github' ? (
+              <LinkAppCard name="GitHub" icon="github" color={metaOf('github').color} linkedAs={me.githubUsername} purpose="Needed for this challenge" placeholder="e.g. octocat" maxLength={39} note={GITHUB_NOTE} link={linkGithub} />
+            ) : category === 'duolingo' ? (
+              <LinkAppCard name="Duolingo" icon="owl" color={metaOf('duolingo').color} linkedAs={me.duolingoUsername} purpose="Needed for this challenge" placeholder="e.g. luis" maxLength={30} note={DUOLINGO_NOTE} link={linkDuolingo} />
+            ) : category === 'chess' ? (
               me.chessUsername ? (
                 <Banner tone="success" text={`Linked as ${me.chessUsername}. You're good to go.`} />
               ) : (
@@ -428,7 +499,7 @@ export default function Create() {
             <Title>How do you win?</Title>
             <View style={{ gap: space.md }} accessibilityRole="radiogroup">
               <Choice icon="bullseye-arrow" title="Hit a target" subtitle="Everyone who reaches the goal splits the pot." selected={mode === 'target'} onPress={() => setMode('target')} />
-              <Choice icon="podium-gold" title="Most progress" subtitle={category === 'chess' ? 'Whoever gains the most rating takes it all.' : 'Whoever logs the most miles takes it all.'} selected={mode === 'open'} onPress={() => setMode('open')} />
+              <Choice icon="podium-gold" title="Most progress" subtitle={isApp(category) ? APPS[category].mostSubtitle : category === 'chess' ? 'Whoever gains the most rating takes it all.' : 'Whoever logs the most miles takes it all.'} selected={mode === 'open'} onPress={() => setMode('open')} />
             </View>
           </>
         ) : null}
@@ -436,7 +507,7 @@ export default function Create() {
         {step === 'goal' ? (
           <>
             <Title>Set the goal</Title>
-            {kind !== 'custom' ? <Field label="Challenge name" value={title} onChangeText={setTitle} maxLength={60} placeholder={category === 'dare' ? 'Sing in the dining hall' : category === 'chess' ? 'Road to 1200' : '20 mile week'} returnKeyType="done" /> : null}
+            {kind !== 'custom' ? <Field label="Challenge name" value={title} onChangeText={setTitle} maxLength={60} placeholder={category === 'dare' ? 'Sing in the dining hall' : category === 'chess' ? 'Road to 1200' : isApp(category) ? APPS[category].titleHint : '20 mile week'} returnKeyType="done" /> : null}
             {category === 'chess' ? (
               <View style={{ gap: space.sm }}>
                 <Label>Time control</Label>
@@ -446,24 +517,24 @@ export default function Create() {
             {category !== 'dare' && effectiveMode === 'target' ? (
               <>
                 <Field
-                  label={category === 'chess' ? 'Target rating' : 'Target miles'}
+                  label={isApp(category) ? APPS[category].targetLabel : category === 'chess' ? 'Target rating' : 'Target miles'}
                   value={target}
                   onChangeText={setTarget}
-                  keyboardType={category === 'chess' ? 'number-pad' : 'decimal-pad'}
-                  placeholder={category === 'chess' ? '1200' : '20'}
+                  keyboardType={category === 'strava' ? 'decimal-pad' : 'number-pad'}
+                  placeholder={isApp(category) ? APPS[category].placeholder : category === 'chess' ? '1200' : '20'}
                   maxLength={6}
-                  hint={category === 'chess' ? `Checked live against chess.com (${me.chessUsername ?? 'link your username'}).` : 'Only GPS-recorded runs and walks count. Manual activities are ignored.'}
+                  hint={isApp(category) ? APPS[category].hint : category === 'chess' ? `Checked live against chess.com (${me.chessUsername ?? 'link your username'}).` : 'Only GPS-recorded runs and walks count. Manual activities are ignored.'}
                 />
                 <Row style={{ flexWrap: 'wrap' }}>
-                  {(category === 'chess' ? [800, 1000, 1200, 1500, 1800] : [3.1, 6.2, 13.1, 20, 26.2]).map((v) => (
+                  {(isApp(category) ? APPS[category].quick : category === 'chess' ? [800, 1000, 1200, 1500, 1800] : [3.1, 6.2, 13.1, 20, 26.2]).map((v) => (
                     <Squish key={v} accessibilityLabel={`Set target ${v}`} onPress={() => setTarget(String(v))} style={[styles.quick, target === String(v) && styles.quickOn]}>
-                      <Text style={[styles.quickText, target === String(v) && { color: colors.bg }]}>{category === 'strava' ? (v === 3.1 ? '5K' : v === 6.2 ? '10K' : v === 13.1 ? 'Half' : v === 26.2 ? 'Marathon' : `${v} mi`) : v}</Text>
+                      <Text style={[styles.quickText, target === String(v) && { color: colors.bg }]}>{category === 'strava' ? (v === 3.1 ? '5K' : v === 6.2 ? '10K' : v === 13.1 ? 'Half' : v === 26.2 ? 'Marathon' : `${v} mi`) : v.toLocaleString()}</Text>
                     </Squish>
                   ))}
                 </Row>
               </>
             ) : null}
-            {category !== 'dare' && effectiveMode === 'open' ? <Banner tone="info" text={category === 'chess' ? 'Most rating points gained from now until the end wins the whole pot.' : 'Most GPS-recorded miles between now and the end wins the whole pot.'} /> : null}
+            {category !== 'dare' && effectiveMode === 'open' ? <Banner tone="info" text={isApp(category) ? APPS[category].openBanner : category === 'chess' ? 'Most rating points gained from now until the end wins the whole pot.' : 'Most GPS-recorded miles between now and the end wins the whole pot.'} /> : null}
             {category === 'dare' ? (
               <>
                 <DareIdeas
@@ -629,7 +700,9 @@ export default function Create() {
                   ? finalDare
                   : kind === 'custom'
                     ? goal.trim()
-                    : effectiveMode === 'open'
+                    : isApp(category)
+                      ? APPS[category].review(target, effectiveMode === 'open')
+                      : effectiveMode === 'open'
                       ? category === 'chess'
                         ? `Most ${tc} rating gained wins`
                         : 'Most miles wins'
@@ -637,10 +710,11 @@ export default function Create() {
                         ? `Reach ${target} ${tc} on chess.com`
                         : `Run or walk ${target} miles`}
               </Muted>
-              {kind === 'custom' && category !== 'dare' ? <Muted>Verified by {category === 'chess' ? `chess.com · ${effectiveMode === 'open' ? `most ${tc} rating gained` : `reach ${target} ${tc}`}` : `Strava · ${effectiveMode === 'open' ? 'most miles' : `${target} miles`}`}</Muted> : null}
+              {kind === 'custom' && isApp(category) ? <Muted>Verified by {APPS[category].name} · {APPS[category].review(target, effectiveMode === 'open').toLowerCase()}</Muted> : null}
+              {kind === 'custom' && (category === 'chess' || category === 'strava') ? <Muted>Verified by {category === 'chess' ? `chess.com · ${effectiveMode === 'open' ? `most ${tc} rating gained` : `reach ${target} ${tc}`}` : `Strava · ${effectiveMode === 'open' ? 'most miles' : `${target} miles`}`}</Muted> : null}
               <ReviewRow label="Your stake" value={`${stake.toLocaleString()} coins`} accent />
               <ReviewRow label="Ends in" value={durationLabel(minutes)} />
-              <ReviewRow label="Proof" value={category === 'dare' ? 'Video + friends' : category === 'chess' ? 'chess.com' : 'Strava GPS'} />
+              <ReviewRow label="Proof" value={category === 'dare' ? 'Video + friends' : isApp(category) ? APPS[category].proof : category === 'chess' ? 'chess.com' : 'Strava GPS'} />
               {invitees.length ? <ReviewRow label="Invites" value={`${invitees.length} friend${invitees.length === 1 ? '' : 's'}`} /> : null}
             </Card>
           </>

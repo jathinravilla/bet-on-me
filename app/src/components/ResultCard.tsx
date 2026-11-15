@@ -6,7 +6,7 @@ import { Butterfingers } from '@/components/Butterfingers';
 import { Gradient } from '@/components/fx';
 import { coins } from '@/lib/format';
 import { WEB_URL } from '@/lib/share';
-import { categoryMeta, colors, fonts, gradients, radius, space } from '@/lib/theme';
+import { colors, fonts, gradients, radius, space, metaOf } from '@/lib/theme';
 
 /** A picture-ready recap of a settled bet. Rendered on screen and captured as an image for sharing. */
 export function ResultCard({ c, quote, iWon, cardRef }: { c: ChallengeView; quote?: string | null; iWon: boolean; cardRef?: Ref<ComponentRef<typeof View>> }) {
@@ -16,7 +16,7 @@ export function ResultCard({ c, quote, iWon, cardRef }: { c: ChallengeView; quot
   const names = winners.map((w) => `@${w.username}`);
   const headline = refunded ? 'Everyone gets their coins back' : winners.length === 0 ? 'No winner this time' : winners.length === 1 ? `${names[0]} takes the pot` : `${names.slice(0, 2).join(' & ')}${winners.length > 2 ? ` +${winners.length - 2}` : ''} split the pot`;
   const share = winners.length ? Math.floor((s?.payouts.find((p) => p.userId === winners[0].userId)?.lamports ?? 0)) : 0;
-  const meta = categoryMeta[c.category];
+  const meta = metaOf(c.category);
   const proof = s?.receipt?.hash.slice(0, 10);
 
   return (

@@ -116,3 +116,98 @@ export async function stravaMiles(user: UserDoc, after: Date, before: Date): Pro
     return null;
   }
 }
+
+// ---------- GitHub (public contributions calendar, no sign-in) ----------
+// The profile calendar shows one cell per day for the trailing year, each with a tooltip like
+// "5 contributions on November 14th." We only ever use differences between two reads, so the
+// page's own yearly headline (which counts a slightly different window) doesn't matter.
+
+export const GITHUB_USERNAME = /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,38})$/;
+
+/** Pure: day (YYYY-MM-DD) -> contribution count, from the calendar HTML. */
+export function parseGithubCalendar(html: string): Map<string, number> {
+  const dateById = new Map<string, string>();
+  for (const m of html.matchAll(/<td\b[^>]*>/g)) {
+    const tag = m[0];
+    const date = /data-date="(\d{4}-\d{2}-\d{2})"/.exec(tag)?.[1];
+    const id = /\bid="([^"]+)"/.exec(tag)?.[1];
+    if (date && id) dateById.set(id, date);
+  }
+  const days = new Map<string, number>();
+  for (const m of html.matchAll(/<tool-tip\b[^>]*\bfor="([^"]+)"[^>]*>([^<]*)<\/tool-tip>/g)) {
+    const date = dateById.get(m[1]);
+    if (!date) continue;
+    const text = m[2].trim();
+    const n = /^No contributions/i.test(text) ? 0 : Number((/^([\d,]+)\s+contributions?\b/i.exec(text)?.[1] ?? "").replace(/,/g, ""));
+    if (Number.isFinite(n)) days.set(date, n);
+  }
+  return days;
+}
+
+type GithubFake = Record<string, Record<string, number>>; // username -> day -> count
+type DuolingoFake = Record<string, number>; // username -> total XP
+/** Local tests only: canned answers instead of network calls. Never active on Vercel. */
+const fakes = () => (process.env.VERCEL ? undefined : (globalThis as { __betonmeFakes?: { github?: GithubFake; duolingo?: DuolingoFake } }).__betonmeFakes);
+
+/** Daily contributions for the last year, "missing" if there's no such user, or null if GitHub didn't answer. */
+export async function githubDays(username: string): Promise<Map<string, number> | "missing" | null> {
+  const fake = fakes()?.github;
+  if (fake) {
+    const u = fake[username.toLowerCase()];
+    return u ? new Map(Object.entries(u)) : "missing";
+  }
+  try {
+    const res = await fetch(`https://github.com/users/${encodeURIComponent(username)}/contributions`, {
+      headers: { "User-Agent": UA },
+      redirect: "error",
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.status === 404) return "missing";
+    if (res.status !== 200) return null;
+    const days = parseGithubCalendar(await res.text());
+    return days.size > 0 ? days : null; // an empty parse means the page changed, not "zero contributions"
+  } catch {
+    return null;
+  }
+}
+
+/** Contributions on or after `fromDay` (YYYY-MM-DD). Null if GitHub couldn't be read. */
+export async function githubContributionsSince(username: string, fromDay: string): Promise<number | null> {
+  const days = await githubDays(username);
+  if (days === null || days === "missing") return null;
+  let total = 0;
+  for (const [day, n] of days) if (day >= fromDay) total += n;
+  return total;
+}
+
+/** The day GitHub-challenge counting starts: one day before joining, so timezone differences can't drop a day. */
+export const githubWindowStart = (joinedAt: Date) => new Date(joinedAt.getTime() - 24 * 3600 * 1000).toISOString().slice(0, 10);
+
+// ---------- Duolingo (public profile lookup by username, no sign-in) ----------
+
+export const DUOLINGO_USERNAME = /^[A-Za-z0-9_.-]{1,30}$/;
+
+/** Total XP and the account's exact username, "missing" if no such user, or null if Duolingo didn't answer. */
+export async function duolingoProfile(username: string): Promise<{ username: string; totalXp: number } | "missing" | null> {
+  const fake = fakes()?.duolingo;
+  if (fake) {
+    const xp = fake[username.toLowerCase()];
+    return typeof xp === "number" ? { username: username.toLowerCase(), totalXp: xp } : "missing";
+  }
+  try {
+    // No `fields=` filter: with it, Duolingo answers {} even for real users.
+    const { status, json } = await fetchJson(`https://www.duolingo.com/2017-06-30/users?username=${encodeURIComponent(username)}`, { headers: { "User-Agent": UA } });
+    if (status !== 200 || !json || !Array.isArray(json.users)) return null;
+    const u = json.users[0];
+    if (!u) return "missing";
+    if (typeof u.totalXp !== "number" || typeof u.username !== "string") return null;
+    return { username: u.username, totalXp: u.totalXp };
+  } catch {
+    return null;
+  }
+}
+
+export async function duolingoXp(username: string): Promise<number | null> {
+  const p = await duolingoProfile(username);
+  return p && p !== "missing" ? p.totalXp : null;
+}

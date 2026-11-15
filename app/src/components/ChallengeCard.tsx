@@ -4,7 +4,7 @@ import type { ChallengeView } from '../../../lib/types';
 import { AvatarStack, CategoryMark, LiveDot, Squish } from '@/components/fx';
 import { Chip, Icon, IconButton, Row } from '@/components/ui';
 import { coins, endingSoon, goalLine, progressRatio, timeLeft } from '@/lib/format';
-import { categoryMeta, colors, fonts, radius, space } from '@/lib/theme';
+import { colors, fonts, radius, space, metaOf } from '@/lib/theme';
 
 export function StatusChip({ c, now }: { c: ChallengeView; now: number }) {
   if (c.status === 'banned') return <Chip text="Removed" tone="danger" />;
@@ -35,7 +35,7 @@ export function ChallengeCard({
   /** e.g. "maya & leo in" on the Squad board */
   highlight?: string;
 }) {
-  const meta = categoryMeta[c.category];
+  const meta = metaOf(c.category);
   const players = c.participants.length;
   const live = c.status === 'active' && new Date(c.endsAt).getTime() > now;
   const hot = live && endingSoon(c, now);

@@ -194,7 +194,7 @@ export async function judgeDareVideo(args: {
 // ---------- Butterfingers the coach ----------
 
 export interface CoachInput {
-  category: "strava" | "chess" | "dare";
+  category: "strava" | "chess" | "dare" | "github" | "duolingo";
   title: string;
   description: string;
   goal: string; // plain-English goal line built by the server, e.g. "Run 20 miles in 7 days"

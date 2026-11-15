@@ -12,7 +12,7 @@ import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { coins, timeLeft } from '@/lib/format';
 import { useNow } from '@/lib/useNow';
-import { categoryMeta, colors, fonts, radius, space } from '@/lib/theme';
+import { colors, fonts, radius, space, metaOf } from '@/lib/theme';
 
 type Tab = 'live' | 'friends' | 'requests';
 
@@ -45,7 +45,7 @@ function ActivityRow({ a, now }: { a: ActivityItem; now: number }) {
       </View>
       <View style={styles.flex}>
         <Body numberOfLines={2}>
-          <BodyStrong>{name}</BodyStrong> {k.verb} <BodyStrong color={categoryMeta[a.category].color}>{a.title}</BodyStrong>
+          <BodyStrong>{name}</BodyStrong> {k.verb} <BodyStrong color={metaOf(a.category).color}>{a.title}</BodyStrong>
         </Body>
         <Muted>
           {ago(a.at, now)}

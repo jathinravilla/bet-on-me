@@ -28,7 +28,7 @@ import {
 import { inviteCode, livenessWord, randomToken, safeEqual, sha256 } from "./crypto";
 import { cols, rateLimit, type ChallengeDoc, type DareProofDoc, type UserDoc } from "./db";
 import { DEMO_MODE, MAX_USERS, SOLANA_MOCK, STRAVA_DEMO, need } from "./env";
-import { CHESS_USERNAME, chessPlayerExists, chessRating, stravaAuthorizeUrl, stravaExchange } from "./external";
+import { CHESS_USERNAME, DUOLINGO_USERNAME, GITHUB_USERNAME, chessPlayerExists, chessRating, duolingoProfile, duolingoXp, githubContributionsSince, githubDays, githubWindowStart, stravaAuthorizeUrl, stravaExchange } from "./external";
 import { dareIdeas, judgeDareVideo, screenDare } from "./gemini";
 import { LOCAL_MEDIA, VIDEO_EXTS, extOf, localUpload, mimeOf, localVideoPath, originOf, readLocalVideo, serveLocalVideo } from "./localmedia";
 import { HttpError, num, objectIdStr, oneOf, optStr, str, type Ctx, type Route } from "./http";
@@ -147,6 +147,8 @@ async function meView(userId: ObjectId): Promise<MeView> {
     points: user.points,
     wallet: { publicKey: user.wallet.publicKey, balanceLamports: bal, funded: user.fundState === "done" },
     chessUsername: user.chessUsername,
+    githubUsername: user.githubUsername,
+    duolingoUsername: user.duolingoUsername,
     stravaConnected: !!user.strava || (STRAVA_DEMO() && !!user.stravaDemo),
     stravaDemo: STRAVA_DEMO(),
     limits: {
@@ -217,6 +219,57 @@ async function setChess(ctx: Ctx) {
   return meView(ctx.user._id);
 }
 
+async function setGithub(ctx: Ctx) {
+  await rateLimit(`github:${uidOf(ctx.user)}`, 10, 60);
+  const username = str(ctx.body.username, "GitHub username", 1, 39);
+  if (!GITHUB_USERNAME.test(username)) throw new HttpError(400, "That doesn't look like a GitHub username.");
+  const days = await githubDays(username);
+  if (days === "missing") throw new HttpError(404, `No GitHub user called "${username}".`);
+  if (days === null) throw new HttpError(502, "GitHub didn't respond. Try again in a moment.");
+  const { users } = await cols();
+  await users.updateOne({ _id: ctx.user._id }, { $set: { githubUsername: username.toLowerCase() } });
+  return meView(ctx.user._id);
+}
+
+async function setDuolingo(ctx: Ctx) {
+  await rateLimit(`duolingo:${uidOf(ctx.user)}`, 10, 60);
+  const username = str(ctx.body.username, "Duolingo username", 1, 30);
+  if (!DUOLINGO_USERNAME.test(username)) throw new HttpError(400, "That doesn't look like a Duolingo username.");
+  const p = await duolingoProfile(username);
+  if (p === "missing") throw new HttpError(404, `No Duolingo user called "${username}". Check that the profile is public.`);
+  if (p === null) throw new HttpError(502, "Duolingo didn't respond. Try again in a moment.");
+  const { users } = await cols();
+  await users.updateOne({ _id: ctx.user._id }, { $set: { duolingoUsername: p.username } });
+  return meView(ctx.user._id);
+}
+
+/**
+ * A player's starting point for "gained since joining" challenges. A failed read is never treated as 0:
+ * that would count a player's whole history as progress, so the create/join is refused instead.
+ */
+async function startingPoint(category: ChallengeDoc["category"], user: UserDoc, chessTimeControl?: ChallengeDoc["chessTimeControl"]): Promise<{ baseline?: number; windowStart?: string; source?: string }> {
+  if (category === "chess") {
+    if (!user.chessUsername) throw new HttpError(400, "Set your chess.com username on your profile first.");
+    const rating = await chessRating(user.chessUsername, chessTimeControl ?? "rapid");
+    if (rating === null) throw new HttpError(400, `You don't have a ${chessTimeControl ?? "rapid"} rating on chess.com yet — play a rated game first.`);
+    return { baseline: rating };
+  }
+  if (category === "github") {
+    if (!user.githubUsername) throw new HttpError(400, "Link your GitHub username on your profile first.");
+    const windowStart = githubWindowStart(new Date());
+    const so = await githubContributionsSince(user.githubUsername, windowStart);
+    if (so === null) throw new HttpError(502, "Couldn't read your GitHub contributions right now. Try again in a moment.");
+    return { baseline: so, windowStart, source: user.githubUsername };
+  }
+  if (category === "duolingo") {
+    if (!user.duolingoUsername) throw new HttpError(400, "Link your Duolingo username on your profile first.");
+    const xp = await duolingoXp(user.duolingoUsername);
+    if (xp === null) throw new HttpError(502, "Couldn't read your Duolingo XP right now. Try again in a moment.");
+    return { baseline: xp, source: user.duolingoUsername };
+  }
+  return {};
+}
+
 // ---------- Strava OAuth ----------
 
 const RETURN_TO = /^(exp|exps|betonme):\/\/[^\s]{0,280}$/; // app deep links only — never a web URL
@@ -277,7 +330,7 @@ async function createChallenge(ctx: Ctx) {
   const uid = uidOf(user);
   await rateLimit(`create:${uid}`, 15, 3600);
   const b = ctx.body as Partial<Record<keyof CreateChallengeBody, unknown>>;
-  const category = oneOf(b.category, "Category", ["strava", "chess", "dare"] as const);
+  const category = oneOf(b.category, "Category", ["strava", "chess", "dare", "github", "duolingo"] as const);
   const visibility = oneOf(b.visibility, "Visibility", ["friends", "public"] as const);
   const mode = category === "dare" ? "target" : oneOf(b.mode, "Mode", ["target", "open"] as const);
   const title = str(b.title, "Title", 3, 60);
@@ -295,15 +348,20 @@ async function createChallenge(ctx: Ctx) {
   let chessTimeControl: ChallengeDoc["chessTimeControl"];
   let dareText: string | undefined;
   let baseline: number | undefined;
+  let windowStart: string | undefined;
+  let source: string | undefined;
   if (category === "strava") {
     if (mode === "target") target = num(b.target, "Target miles", 0.1, 500);
   } else if (category === "chess") {
     chessTimeControl = oneOf(b.chessTimeControl ?? "rapid", "Time control", ["rapid", "blitz", "bullet"] as const);
     if (mode === "target") target = num(b.target, "Target rating", 100, 3500, true);
-    if (!user.chessUsername) throw new HttpError(400, "Set your chess.com username on your profile first.");
-    const rating = await chessRating(user.chessUsername, chessTimeControl);
-    if (rating === null) throw new HttpError(400, `You don't have a ${chessTimeControl} rating on chess.com yet — play a rated game first.`);
-    baseline = rating;
+    ({ baseline } = await startingPoint("chess", user, chessTimeControl));
+  } else if (category === "github") {
+    if (mode === "target") target = num(b.target, "Target contributions", 1, 2000, true);
+    ({ baseline, windowStart, source } = await startingPoint("github", user));
+  } else if (category === "duolingo") {
+    if (mode === "target") target = num(b.target, "Target XP", 10, 100000, true);
+    ({ baseline, source } = await startingPoint("duolingo", user));
   } else {
     dareText = str(b.dareText, "Dare", 10, 200);
     if (visibility === "public" && (await weekCredits(user)) >= current.publicDaresPerWeek) {
@@ -379,6 +437,8 @@ async function createChallenge(ctx: Ctx) {
           joinedAt: new Date(),
           stakeTxSig: sig,
           baseline,
+          windowStart,
+          source,
           progress: category === "chess" && mode === "target" ? baseline ?? 0 : 0,
           completed: false,
         },
@@ -487,13 +547,7 @@ async function join(ctx: Ctx) {
   if (isParticipant(ch, uid)) throw new HttpError(409, "You're already in this challenge.");
   if (ch.participants.length >= MAX_PARTICIPANTS) throw new HttpError(409, "This challenge is full.");
 
-  let baseline: number | undefined;
-  if (ch.category === "chess") {
-    if (!user.chessUsername) throw new HttpError(400, "Set your chess.com username on your profile first.");
-    const rating = await chessRating(user.chessUsername, ch.chessTimeControl ?? "rapid");
-    if (rating === null) throw new HttpError(400, `You don't have a ${ch.chessTimeControl ?? "rapid"} rating on chess.com yet — play a rated game first.`);
-    baseline = rating;
-  }
+  const { baseline, windowStart, source } = await startingPoint(ch.category, user, ch.chessTimeControl);
   if ((await balance(user.wallet.publicKey)) < ch.stakeLamports) throw new HttpError(400, "Not enough coins in your wallet for this stake.");
 
   // Reserve the seat first (atomic, so a double-tap can't join twice), then move the money.
@@ -507,6 +561,8 @@ async function join(ctx: Ctx) {
           joinedAt: new Date(),
           stakeTxSig: "pending",
           baseline,
+          windowStart,
+          source,
           progress: ch.category === "chess" && ch.mode === "target" ? baseline ?? 0 : 0,
           completed: false,
         },
@@ -548,9 +604,14 @@ async function playerChallenge(ctx: Ctx): Promise<ChallengeDoc> {
 }
 
 async function sync(ctx: Ctx) {
-  await rateLimit(`sync:${uidOf(ctx.user)}`, 30, 60);
+  const uid = uidOf(ctx.user);
+  await rateLimit(`sync:${uid}`, 30, 60);
   const ch = await playerChallenge(ctx);
-  return toView(await settleIfDue(await syncChallenge(ch)), ctx.user, true);
+  // A tap on "Sync" always re-reads the caller's own numbers (polling may have just cached them).
+  // GitHub / Duolingo are public pages, so those taps get a tighter limit.
+  if (ch.category === "github" || ch.category === "duolingo") await rateLimit(`sync-ext:${uid}`, 6, 60);
+  const mine = await syncChallenge(ch, { onlyUserId: uid, force: true });
+  return toView(await settleIfDue(await syncChallenge(mine)), ctx.user, true);
 }
 
 async function publicChallenge(ctx: Ctx): Promise<ChallengeDoc> {
@@ -617,7 +678,7 @@ async function demoEndNow(ctx: Ctx) {
 async function demoSimulate(ctx: Ctx) {
   assertDemo();
   const ch = await playerChallenge(ctx);
-  if (ch.status !== "active" || ch.category === "dare") throw new HttpError(409, "Progress can only be simulated on live running or chess challenges.");
+  if (ch.status !== "active" || ch.category === "dare") throw new HttpError(409, "Progress can only be simulated on live challenges that sync from an app.");
   // Fake progress would let a stranger take a public pot, so it only works among friends.
   if (ch.visibility !== "friends") throw new HttpError(403, "Progress can only be simulated in friends challenges.");
   const amount = num(ctx.body.amount, "Amount", -500, 500);
@@ -853,6 +914,8 @@ export const routes: Route[] = [
   { method: "POST", pattern: "/auth/logout", auth: true, handler: logout },
   { method: "GET", pattern: "/me", auth: true, handler: me },
   { method: "POST", pattern: "/me/chess", auth: true, handler: setChess },
+  { method: "POST", pattern: "/me/github", auth: true, handler: setGithub },
+  { method: "POST", pattern: "/me/duolingo", auth: true, handler: setDuolingo },
   { method: "POST", pattern: "/me/profile", auth: true, handler: async (ctx) => (await updateProfile(ctx), meView(ctx.user._id)) },
   { method: "POST", pattern: "/me/integrations", auth: true, handler: async (ctx) => (await toggleIntegrationInterest(ctx), meView(ctx.user._id)) },
   { method: "GET", pattern: "/users/search", auth: true, handler: searchUsers },
