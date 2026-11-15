@@ -1,5 +1,5 @@
 import { MongoClient, type Collection, type Db, type ObjectId } from "mongodb";
-import type { Category, ChallengeStatus, ChessTimeControl, DareVerdict, Mode, ProofStatus, Visibility } from "../lib/types";
+import type { Category, ChallengeStatus, ChessTimeControl, DareVerdict, Mode, ProofStatus, ThreadEventType, Visibility } from "../lib/types";
 import { need } from "./env";
 import { HttpError } from "./http";
 
@@ -32,6 +32,39 @@ export interface UserDoc {
   integrationsWanted?: string[];
   ratingSum?: number;
   ratingCount?: number;
+  notifications?: NotificationDoc[]; // newest last, capped
+  threadSeen?: Record<string, number>; // challengeId -> comment count when you last opened the thread
+}
+
+export interface NotificationDoc {
+  id: string;
+  kind: "mention" | "reply" | "nudge";
+  challengeId: string;
+  commentId?: string;
+  fromId: string;
+  text?: string;
+  at: Date;
+  seen: boolean;
+}
+
+/** One collection for a challenge's thread: player comments and automatic bet updates, in insertion order. */
+export interface ThreadDoc {
+  _id: ObjectId;
+  challengeId: string;
+  kind: "comment" | "event";
+  at: Date;
+  // comments
+  userId?: string;
+  username?: string;
+  text?: string;
+  replyTo?: string;
+  replyToUsername?: string;
+  deleted?: boolean;
+  hidden?: boolean;
+  reports?: { userId: string; at: Date }[];
+  // events
+  key?: string; // deterministic id so the same update is never posted twice
+  type?: ThreadEventType;
 }
 
 export interface ParticipantDoc {
@@ -83,6 +116,9 @@ export interface ChallengeDoc {
   downvotes: number;
   reports: { userId: string; reason: string; at: Date }[];
   ratings?: { from: string; stars: number; at: Date }[]; // players rate the challenge once it's settled (feeds the creator's rating)
+  commentCount?: number;
+  pinnedCommentId?: string;
+  backers?: { userId: string; backs: string; at: Date }[]; // spectators backing a player (no money involved)
   createdAt: Date;
 }
 
@@ -119,6 +155,7 @@ interface Cols {
   users: Collection<UserDoc>;
   challenges: Collection<ChallengeDoc>;
   proofs: Collection<DareProofDoc>;
+  threads: Collection<ThreadDoc>;
   rates: Collection<RateDoc>;
   ledger: Collection<LedgerDoc>;
 }
@@ -137,6 +174,7 @@ export function cols(): Promise<Cols> {
         users: db.collection("users"),
         challenges: db.collection("challenges"),
         proofs: db.collection("dareproofs"),
+        threads: db.collection("threads"),
         rates: db.collection("rates"),
         ledger: db.collection("mockledger"),
       };
@@ -150,6 +188,8 @@ export function cols(): Promise<Cols> {
         c.challenges.createIndex({ "participants.userId": 1 }),
         c.challenges.createIndex({ status: 1, endsAt: 1 }),
         c.proofs.createIndex({ challengeId: 1 }),
+        c.threads.createIndex({ challengeId: 1, _id: -1 }),
+        c.threads.createIndex({ key: 1 }, { unique: true, sparse: true }),
         c.rates.createIndex({ exp: 1 }, { expireAfterSeconds: 0 }),
       ]);
       return c;

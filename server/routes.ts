@@ -32,6 +32,8 @@ import { CHESS_USERNAME, chessPlayerExists, chessRating, stravaAuthorizeUrl, str
 import { dareIdeas, judgeDareVideo, screenDare } from "./gemini";
 import { LOCAL_MEDIA, VIDEO_EXTS, extOf, localUpload, mimeOf, localVideoPath, originOf, readLocalVideo, serveLocalVideo } from "./localmedia";
 import { HttpError, num, objectIdStr, oneOf, optStr, str, type Ctx, type Route } from "./http";
+import { postEvent, fmt } from "./events";
+import { backPlayer, deleteComment, getThread, listNotifications, nudgePlayer, pinComment, postComment, readNotifications, reportComment, unseenNotifications } from "./thread";
 import {
   avatarOf,
   canSeeFriendsChallenge,
@@ -140,6 +142,7 @@ async function meView(userId: ObjectId): Promise<MeView> {
     friendCount: user.friends?.length ?? 0,
     pendingRequests: user.friendReqIn?.length ?? 0,
     pendingInvites: liveInvites,
+    pendingNotifications: unseenNotifications(user),
     integrationsWanted: user.integrationsWanted ?? [],
     points: user.points,
     wallet: { publicKey: user.wallet.publicKey, balanceLamports: bal, funded: user.fundState === "done" },
@@ -386,6 +389,7 @@ async function createChallenge(ctx: Ctx) {
   if (category === "dare" && visibility === "public") await users.updateOne({ _id: user._id }, { $inc: { dareCreditsUsedThisWeek: 1 } });
   await addPoints(uid, POINTS.join);
   const created = await getChallenge(doc._id.toHexString());
+  await postEvent(created._id.toHexString(), "started", "started", `${user.username} started the bet · ${fmt.coins(stakeLamports)} coins each`);
   await sendInvites(created, user, b.inviteFriendIds).catch((e) => console.error("invite failed:", e instanceof Error ? e.message : e));
   return toView(created, user, true);
 }
@@ -532,6 +536,8 @@ async function join(ctx: Ctx) {
   }
   await addPoints(uid, POINTS.join);
   await clearInvite(user._id, ch._id.toHexString());
+  const joinedCh = await getChallenge(ch._id.toHexString());
+  await postEvent(ch._id.toHexString(), `joined:${uid}`, "joined", `${user.username} joined · pot is now ${fmt.coins(joinedCh.potLamports)} coins`);
   return toView(await getChallenge(ch._id.toHexString()), user, true);
 }
 
@@ -762,6 +768,12 @@ async function dareVerify(ctx: Ctx): Promise<DareVerifyResponse> {
     { _id: proof._id },
     { $set: { gemini: { verdict: result.verdict, reason, checkedAt: new Date() }, voting, finalStatus: "pending", ...(disputeEndsAt ? { disputeEndsAt } : {}) } }
   );
+  await postEvent(
+    ch._id.toHexString(),
+    `proof:${proof._id.toHexString()}`,
+    "proof",
+    `${ctx.user.username} posted proof · ${result.verdict === "pass" ? "AI says it counts" : result.verdict === "fail" ? "AI says it doesn't count" : "players will vote"}`
+  );
   if (finalStatus !== "pending") await resolveProof(proof, finalStatus === "approved");
   return { verdict: result.verdict, reason, finalStatus, voting, disputeEndsAt: disputeEndsAt?.toISOString() };
 }
@@ -853,6 +865,15 @@ export const routes: Route[] = [
   { method: "POST", pattern: "/friends/invites/dismiss", auth: true, handler: dismissInvite },
   { method: "POST", pattern: "/challenges/:id/invite", auth: true, handler: inviteToChallenge },
   { method: "POST", pattern: "/challenges/:id/rate", auth: true, handler: rateChallenge },
+  { method: "GET", pattern: "/challenges/:id/thread", auth: true, handler: getThread },
+  { method: "POST", pattern: "/challenges/:id/comments", auth: true, handler: postComment },
+  { method: "POST", pattern: "/challenges/:id/pin", auth: true, handler: pinComment },
+  { method: "POST", pattern: "/challenges/:id/back", auth: true, handler: backPlayer },
+  { method: "POST", pattern: "/challenges/:id/nudge", auth: true, handler: nudgePlayer },
+  { method: "POST", pattern: "/comments/:commentId/delete", auth: true, handler: deleteComment },
+  { method: "POST", pattern: "/comments/:commentId/report", auth: true, handler: reportComment },
+  { method: "GET", pattern: "/notifications", auth: true, handler: listNotifications },
+  { method: "POST", pattern: "/notifications/read", auth: true, handler: readNotifications },
   { method: "GET", pattern: "/strava/connect", auth: true, handler: stravaConnect },
   { method: "POST", pattern: "/strava/demo-run", auth: true, handler: stravaDemoRun },
   { method: "GET", pattern: "/strava/callback", auth: false, handler: stravaCallback },

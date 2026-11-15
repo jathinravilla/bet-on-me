@@ -308,6 +308,116 @@ test("dares work locally without Gemini or Blob keys: rule screen, local upload,
   assert.equal(v.voting, true); // no AI here, so the other player decides
 });
 
+test("threads: comments, replies, mentions, unread counts, moderation, pins, backing, nudges, bet updates", async () => {
+  const a = await login("th_amy"); // creator
+  const b = await login("th_bo"); // player, friend of amy
+  const c = await login("th_cy"); // friend of amy, spectator
+  const d = await login("th_dan"); // stranger
+  for (const x of [b, c]) {
+    await call("POST", "/friends/request", x.token, { username: "th_amy" });
+    await call("POST", "/friends/respond", a.token, { userId: x.me.id, accept: true });
+  }
+  type Thread = { items: { kind: string; id: string; text: string | null; type?: string; removed?: string; canDelete?: boolean }[]; pinned?: { id: string }; backing: { total: number; mine: string | null; canBack: boolean; options: { userId: string; pct: number }[] } };
+  const ch = (await call<ChallengeView>("POST", "/challenges", a.token, strava({ durationMinutes: 1440 }))).data;
+  await call("POST", "/challenges/join", b.token, { inviteCode: ch.inviteCode });
+  const thread = async (t: string) => (await call<Thread>("GET", `/challenges/${ch.id}/thread`, t)).data;
+
+  // Strangers can't read or post on a friends-only thread.
+  assert.equal((await call("GET", `/challenges/${ch.id}/thread`, d.token)).status, 404);
+  assert.equal((await call("POST", `/challenges/${ch.id}/comments`, d.token, { text: "hi" })).status, 404);
+
+  // Bet updates are in the thread from the start.
+  let th = await thread(a.token);
+  assert.ok(th.items.some((i) => i.type === "started"));
+  assert.ok(th.items.some((i) => i.type === "joined"));
+
+  // Moderation: trash talk is fine; links, contact details and limits are not.
+  assert.equal((await call("POST", `/challenges/${ch.id}/comments`, b.token, { text: "you're on fire but I'll crush you" })).status, 200);
+  assert.equal((await call("POST", `/challenges/${ch.id}/comments`, b.token, { text: "free coins at scam.xyz" })).status, 422);
+  assert.equal((await call("POST", `/challenges/${ch.id}/comments`, b.token, { text: "x".repeat(281) })).status, 400);
+  assert.equal((await call("POST", `/challenges/${ch.id}/comments`, b.token, { text: "   " })).status, 400);
+
+  // Unread: the creator has one unread comment; opening the thread clears it; your own posts never count.
+  let mine = (await call<ChallengeView[]>("GET", "/challenges/mine", a.token)).data.find((x) => x.id === ch.id)!;
+  assert.equal(mine.unreadComments, 1);
+  th = await thread(a.token);
+  mine = (await call<ChallengeView[]>("GET", "/challenges/mine", a.token)).data.find((x) => x.id === ch.id)!;
+  assert.equal(mine.unreadComments, 0);
+  const first = th.items.find((i) => i.kind === "comment")!;
+
+  // Reply notifies the parent author; @mentions notify people who can see the challenge, never strangers.
+  const reply = (await call<{ id: string }>("POST", `/challenges/${ch.id}/comments`, a.token, { text: "bring it @th_cy @th_dan @th_amy", replyTo: first.id })).data;
+  assert.equal((await me(b.token)).pendingNotifications, 1); // reply
+  assert.equal((await me(c.token)).pendingNotifications, 1); // mention (friend of the creator)
+  assert.equal((await me(d.token)).pendingNotifications, 0); // stranger: not told about a friends-only bet
+  assert.equal((await me(a.token)).pendingNotifications, 0); // self-mention ignored
+  const notes = (await call<{ kind: string; challengeTitle: string }[]>("GET", "/notifications", c.token)).data;
+  assert.equal(notes[0].kind, "mention");
+  await call("POST", "/notifications/read", c.token);
+  assert.equal((await me(c.token)).pendingNotifications, 0);
+  mine = (await call<ChallengeView[]>("GET", "/challenges/mine", a.token)).data.find((x) => x.id === ch.id)!;
+  assert.equal(mine.unreadComments, 0);
+
+  // Pins: creator only; deleting a pinned comment unpins it. Players delete their own; creators can delete any.
+  assert.equal((await call("POST", `/challenges/${ch.id}/pin`, b.token, { commentId: reply.id })).status, 403);
+  assert.equal((await call("POST", `/challenges/${ch.id}/pin`, a.token, { commentId: reply.id })).status, 200);
+  assert.equal((await thread(b.token)).pinned?.id, reply.id);
+  assert.equal((await call("POST", `/comments/${reply.id}/delete`, b.token)).status, 403);
+  assert.equal((await call("POST", `/comments/${reply.id}/delete`, a.token)).status, 200);
+  th = await thread(b.token);
+  assert.equal(th.pinned, undefined);
+  assert.equal(th.items.find((i) => i.id === reply.id)?.text, null);
+  assert.equal((await call("POST", `/comments/${first.id}/delete`, d.token)).status, 404); // stranger can't even see it
+
+  // Reports: hidden for everyone after 3.
+  const e = await login("th_eve");
+  await call("POST", "/friends/request", e.token, { username: "th_amy" });
+  await call("POST", "/friends/respond", a.token, { userId: e.me.id, accept: true });
+  assert.equal((await call("POST", `/comments/${first.id}/report`, b.token)).status, 400); // own comment
+  for (const x of [a, c, e]) assert.equal((await call("POST", `/comments/${first.id}/report`, x.token)).status, 200);
+  assert.equal((await thread(a.token)).items.find((i) => i.id === first.id)?.removed, "hidden");
+
+  // Backing: spectators only; joining the bet drops your backing.
+  assert.equal((await call("POST", `/challenges/${ch.id}/back`, b.token, { userId: a.me.id })).status, 409);
+  const backing = (await call<Thread["backing"]>("POST", `/challenges/${ch.id}/back`, c.token, { userId: b.me.id })).data;
+  assert.equal(backing.total, 1);
+  assert.equal(backing.mine, b.me.id);
+  assert.equal(backing.options.find((o) => o.userId === b.me.id)?.pct, 100);
+  await call("POST", "/challenges/join", c.token, { challengeId: ch.id });
+  assert.equal((await thread(a.token)).backing.total, 0);
+
+  // Nudges: players only, once per day per player, and the target hears about it.
+  assert.equal((await call("POST", `/challenges/${ch.id}/nudge`, d.token, { userId: b.me.id })).status, 404);
+  assert.equal((await call("POST", `/challenges/${ch.id}/nudge`, a.token, { userId: a.me.id })).status, 400);
+  assert.equal((await call("POST", `/challenges/${ch.id}/nudge`, a.token, { userId: b.me.id })).status, 200);
+  assert.equal((await call("POST", `/challenges/${ch.id}/nudge`, a.token, { userId: b.me.id })).status, 429);
+  assert.ok((await call<{ kind: string }[]>("GET", "/notifications", b.token)).data.some((n) => n.kind === "nudge"));
+
+  // Paging: ?before= returns strictly older items, with no overlap.
+  const f = await login("th_fay");
+  await call("POST", "/friends/request", f.token, { username: "th_amy" });
+  await call("POST", "/friends/respond", a.token, { userId: f.me.id, accept: true });
+  for (const x of [c, e, f]) for (let i = 0; i < 8; i++) assert.equal((await call("POST", `/challenges/${ch.id}/comments`, x.token, { text: `cheer ${i}` })).status, 200);
+  const p1 = (await call<Thread & { nextBefore?: string }>("GET", `/challenges/${ch.id}/thread`, a.token)).data;
+  assert.equal(p1.items.length, 30);
+  assert.ok(p1.nextBefore);
+  const p2 = (await call<Thread & { nextBefore?: string }>("GET", `/challenges/${ch.id}/thread?before=${p1.nextBefore}`, a.token)).data;
+  assert.ok(p2.items.length > 0);
+  assert.ok(p2.items.every((i) => i.id < p1.items[p1.items.length - 1].id));
+  assert.equal(new Set([...p1.items, ...p2.items].map((i) => i.id)).size, p1.items.length + p2.items.length);
+
+  // Progress and settlement updates land in the thread, once each.
+  await call("POST", "/demo/simulate-progress", b.token, { challengeId: ch.id, amount: 2 });
+  await call("POST", "/demo/simulate-progress", b.token, { challengeId: ch.id, amount: 0 }); // no change -> no new update
+  th = await thread(a.token);
+  assert.equal(th.items.filter((i) => i.type === "progress").length, 1);
+  assert.ok(th.items.some((i) => i.type === "lead"));
+  await call("POST", "/demo/end-now", a.token, { challengeId: ch.id });
+  th = await thread(a.token);
+  assert.equal(th.items.filter((i) => i.type === "settled").length, 1);
+  assert.equal((await call("POST", `/challenges/${ch.id}/back`, d.token, { userId: b.me.id })).status, 404);
+});
+
 test("sign-ups are rate limited per IP", async () => {
   const statuses: number[] = [];
   for (let i = 0; i < 10; i++) {

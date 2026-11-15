@@ -82,6 +82,7 @@ export function Screen({
           style={styles.flex}
           contentContainerStyle={[pad, { paddingBottom: bottomPad, gap: space.lg, paddingTop: space.sm }]}
           keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
           showsVerticalScrollIndicator={false}
           refreshControl={refreshControl}>
           {children}

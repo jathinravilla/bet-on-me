@@ -8,6 +8,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import type { ChallengeView, CommentaryResponse, FriendsView, ProofView } from '../../../../lib/types';
 import { ChallengeCard, StatusChip, onTrack } from '@/components/ChallengeCard';
 import { ResultCard } from '@/components/ResultCard';
+import { ChallengeThread } from '@/components/ChallengeThread';
 import { Avatar, AvatarStack, CategoryMark, Pop, RatingBadge, Sheet, Squish, StarInput, useConfirm, useToast } from '@/components/fx';
 import { Banner, Body, BodyStrong, Button, Card, Chip, Divider, Heading, Icon, IconButton, Loading, Muted, ProgressBar, Row, Screen, Title, TopBar } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
@@ -111,6 +112,15 @@ export default function ChallengeDetail() {
   const meta = categoryMeta[c.category];
   const mine = c.participants.find((p) => p.userId === me.id);
   const live = c.status === 'active' && !ended;
+  const canNudge = (p: ChallengeView['participants'][number]) => live && c.joined && p.userId !== me.id && !p.completed;
+  const nudge = async (userId: string, username: string) => {
+    try {
+      await api(`/challenges/${c.id}/nudge`, { body: { userId } });
+      toast(`Nudged ${username}`, 'success', 'bell-ring-outline');
+    } catch (e) {
+      toast(errorMessage(e), 'danger');
+    }
+  };
   const settled = c.status === 'settled';
   const myPayout = c.settlement?.payouts.find((p) => p.userId === me.id);
   const iWon = settled && c.settlement?.outcome !== 'refund' && !!c.settlement?.winners.includes(me.id);
@@ -431,10 +441,17 @@ export default function ChallengeDetail() {
                         {p.username}
                         {you ? ' · you' : ''}
                       </Text>
-                      <Text style={[styles.tdNum, p.completed && { color: colors.success }]}>
-                        {progressLabel(c, p)}
-                        {p.completed ? ' ✓' : ''}
-                      </Text>
+                      <Row gap={space.md}>
+                        {canNudge(p) ? (
+                          <Text style={styles.nudge} accessibilityRole="button" accessibilityLabel={`Nudge ${p.username}`} onPress={() => void nudge(p.userId, p.username)}>
+                            Nudge
+                          </Text>
+                        ) : null}
+                        <Text style={[styles.tdNum, p.completed && { color: colors.success }]}>
+                          {progressLabel(c, p)}
+                          {p.completed ? ' ✓' : ''}
+                        </Text>
+                      </Row>
                     </Row>
                     <ProgressBar value={progressRatio(c, p)} tone={p.completed ? 'success' : 'primary'} />
                   </View>
@@ -454,6 +471,9 @@ export default function ChallengeDetail() {
           ))}
         </View>
       ) : null}
+
+      {/* Discussion: comments, bet updates, backing */}
+      <ChallengeThread challengeId={c.id} isPlayer={c.joined} players={[...new Set([...c.participants.map((p) => p.username), c.creatorUsername])].filter((u) => u !== me.username)} onBackingChange={() => void load()} />
 
       {/* Community (public) */}
       {c.visibility === 'public' && live ? (
@@ -625,6 +645,7 @@ const styles = StyleSheet.create({
   invite: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: space.md },
   code: { fontFamily: fonts.bodySemi, fontSize: 20, letterSpacing: 4, color: colors.text },
   rank: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md },
+  nudge: { fontFamily: fonts.bodyMedium, fontSize: 12.5, color: colors.primary },
   rankNum: { width: 18, fontFamily: fonts.bodySemi, fontSize: 13, color: colors.textMuted, textAlign: 'center', fontVariant: ['tabular-nums'] },
   pick: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
 });
