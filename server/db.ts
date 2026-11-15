@@ -172,7 +172,7 @@ const g = globalThis as unknown as { __bom?: Promise<Cols> };
 export function cols(): Promise<Cols> {
   if (!g.__bom) {
     g.__bom = (async () => {
-      const client = new MongoClient(need("MONGODB_URI"), { maxPoolSize: 5, serverSelectionTimeoutMS: 8000 });
+      const client = new MongoClient(need("MONGODB_URI"), { maxPoolSize: 2, minPoolSize: 0, maxIdleTimeMS: 10000, serverSelectionTimeoutMS: 8000 });
       await client.connect();
       const db = client.db(process.env.MONGODB_DB || "betonme");
       const c: Cols = {
