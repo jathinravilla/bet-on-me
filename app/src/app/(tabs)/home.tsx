@@ -111,7 +111,7 @@ export default function Home() {
       {/* Hero: glacier card, navy type, mascot */}
       <Gradient colors={gradients.hero} style={styles.hero}>
         <View style={styles.mascot} pointerEvents="none">
-          <Butterfingers mood="idle" size={150} />
+          <Butterfingers mood="slip" size={150} />
         </View>
         <Text style={styles.heroLabel}>Your balance</Text>
         <Row gap={6} style={{ alignItems: 'baseline' }}>
