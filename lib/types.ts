@@ -88,6 +88,8 @@ export interface ChallengeView {
   canRate: boolean;
   myRating?: number;
   rating: Rating;
+  commentCount: number;
+  unreadComments: number; // only counted for challenges you're in
 }
 
 export interface LimitsView {
@@ -134,6 +136,7 @@ export interface MeView {
   pendingRequests: number;
   pendingRatings: number; // finished challenges you played in and haven't rated yet
   pendingInvites: number;
+  pendingNotifications: number; // unseen mentions, replies and nudges
   integrationsWanted: string[];
   points: number;
   wallet: { publicKey: string; balanceLamports: number; funded: boolean };
@@ -263,4 +266,71 @@ export interface SearchResponse {
 
 export interface CommentaryResponse {
   commentary: { winner: string; loser: string } | null;
+}
+
+// ---------- Challenge threads (comments + live bet updates) ----------
+
+export type ThreadEventType = "started" | "joined" | "progress" | "completed" | "lead" | "proof" | "settled" | "nudge" | "backed";
+
+export interface CommentAuthor {
+  id: string;
+  username: string;
+  displayName?: string;
+  avatar: Avatar;
+}
+
+export interface CommentView {
+  kind: "comment";
+  id: string;
+  author: CommentAuthor;
+  text: string | null; // null once deleted or hidden by reports
+  removed?: "deleted" | "hidden";
+  replyTo?: { id: string; username: string };
+  at: string;
+  byCreator: boolean;
+  isPlayer: boolean;
+  mine: boolean;
+  canDelete: boolean;
+  canPin: boolean;
+  canReport: boolean;
+  iReported: boolean;
+}
+
+export interface ThreadEventView {
+  kind: "event";
+  id: string;
+  type: ThreadEventType;
+  text: string;
+  at: string;
+}
+
+export type ThreadItem = CommentView | ThreadEventView;
+
+export interface BackingView {
+  total: number;
+  options: { userId: string; username: string; avatar?: Avatar; count: number; pct: number }[];
+  mine: string | null; // the player you back
+  canBack: boolean; // spectators of a live bet
+}
+
+export interface ThreadView {
+  items: ThreadItem[]; // newest first
+  nextBefore?: string; // pass as ?before= for older items
+  pinned?: CommentView;
+  backing: BackingView;
+  canComment: boolean;
+  commentCount: number;
+}
+
+export type NotificationKind = "mention" | "reply" | "nudge";
+
+export interface NotificationView {
+  id: string;
+  kind: NotificationKind;
+  challengeId: string;
+  challengeTitle: string;
+  from: CommentAuthor;
+  text?: string; // comment excerpt
+  at: string;
+  seen: boolean;
 }

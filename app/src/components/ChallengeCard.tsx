@@ -112,6 +112,15 @@ export function ChallengeCard({
         </Row>
       </Row>
 
+      {c.unreadComments > 0 || c.commentCount > 0 ? (
+        <Row gap={6}>
+          <Icon name="message-outline" size={13} color={c.unreadComments > 0 ? colors.primary : colors.textMuted} />
+          <Text style={[styles.comments, c.unreadComments > 0 && { color: colors.primary }]}>
+            {c.unreadComments > 0 ? `${c.unreadComments} new ${c.unreadComments === 1 ? 'comment' : 'comments'}` : `${c.commentCount} ${c.commentCount === 1 ? 'comment' : 'comments'}`}
+          </Text>
+        </Row>
+      ) : null}
+
       {toRate ? (
         <View style={styles.rate}>
           <Icon name="star-outline" size={13} color={colors.onAttention} />
@@ -132,6 +141,7 @@ export function ChallengeCard({
 }
 
 const styles = StyleSheet.create({
+  comments: { fontFamily: fonts.bodyMedium, fontSize: 12.5, color: colors.textMuted },
   flex: { flex: 1 },
   card: { backgroundColor: colors.paper, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.paperBorder, padding: space.lg, gap: space.md },
   title: { fontFamily: fonts.displaySemi, fontSize: 17, lineHeight: 22, color: colors.paperText, marginTop: 2 },

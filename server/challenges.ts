@@ -6,6 +6,7 @@ import { keypairOf, transfer } from "./chain";
 import { sha256 } from "./crypto";
 import { cols, type ChallengeDoc, type DareProofDoc, type ParticipantDoc, type UserDoc } from "./db";
 import { chessRating, stravaMiles } from "./external";
+import { postEvent, fmt } from "./events";
 import { HttpError } from "./http";
 
 const SYNC_CACHE_MS = 60_000;
@@ -105,6 +106,8 @@ export async function toView(ch: ChallengeDoc, me: UserDoc, withProofs = false):
     canRate: joined && ch.status === "settled" && ch.creatorId !== uid,
     myRating: (ch.ratings ?? []).find((r) => r.from === uid)?.stars,
     rating: ratingSummary(ch.ratings),
+    commentCount: ch.commentCount ?? 0,
+    unreadComments: joined || ch.creatorId === uid ? Math.max(0, (ch.commentCount ?? 0) - (me.threadSeen?.[ch._id.toHexString()] ?? 0)) : 0,
   };
 
   if (withProofs && ch.category === "dare") {
@@ -190,10 +193,33 @@ export async function syncChallenge(ch: ChallengeDoc, opts: { onlyUserId?: strin
       set["participants.$.progress"] = progress;
       set["participants.$.completed"] = completed;
       set["participants.$.lastSyncedAt"] = new Date();
-      await challenges.updateOne({ _id: ch._id, status: "active", "participants.userId": p.userId }, { $set: set });
+      const r = await challenges.updateOne({ _id: ch._id, status: "active", "participants.userId": p.userId }, { $set: set });
+      if (r.modifiedCount === 1) await progressEvents(ch, p, progress, completed);
     })
   );
-  return getChallenge(ch._id.toHexString());
+  const after = await getChallenge(ch._id.toHexString());
+  const before = leaderboard(ch)[0];
+  const lead = leaderboard(after)[0];
+  if (lead && after.participants.length > 1 && lead.userId !== before?.userId && (lead.completed || lead.progress > (ch.mode === "target" && ch.category === "chess" ? lead.baseline ?? 0 : 0))) {
+    await postEvent(cid(after), `lead:${lead.userId}:${Math.round(lead.progress * 100)}`, "lead", `${lead.username} took the lead`);
+  }
+  return after;
+}
+
+const cid = (ch: ChallengeDoc) => ch._id.toHexString();
+
+/** Thread updates when a player's synced numbers move up (never when they drop). */
+async function progressEvents(ch: ChallengeDoc, p: ParticipantDoc, progress: number, completed: boolean) {
+  if (progress > p.progress) {
+    const text =
+      ch.category === "strava"
+        ? `${p.username} logged +${fmt.miles(progress - p.progress)} mi · ${fmt.miles(progress)} mi total`
+        : ch.mode === "target"
+          ? `${p.username} climbed to ${Math.round(progress)} ${ch.chessTimeControl ?? "rapid"}`
+          : `${p.username} is now ${progress >= 0 ? "+" : ""}${Math.round(progress)} rating`;
+    await postEvent(cid(ch), `progress:${p.userId}:${Math.round(progress * 100)}`, "progress", text);
+  }
+  if (completed && !p.completed) await postEvent(cid(ch), `completed:${p.userId}`, "completed", `${p.username} hit the goal`);
 }
 
 // ---------- dare proofs ----------
@@ -206,6 +232,7 @@ export async function resolveProof(proof: DareProofDoc, approved: boolean) {
       { _id: new ObjectId(proof.challengeId), "participants.userId": proof.userId },
       { $set: { "participants.$.completed": true, "participants.$.progress": 1 } }
     );
+    await postEvent(proof.challengeId, `completed:${proof.userId}`, "completed", `${proof.username}'s proof was approved — dare done`);
   }
 }
 
@@ -323,6 +350,7 @@ export async function settleChallenge(
   }
 
   await challenges.updateOne({ _id }, { $set: { status: s.finalStatus, "settlement.settledAt": new Date() } });
+  await postEvent(id, "settled", "settled", s.finalStatus === "banned" ? "Removed after reports — every stake was refunded" : `Settled · ${s.reason}`);
   return getChallenge(id);
 }
 

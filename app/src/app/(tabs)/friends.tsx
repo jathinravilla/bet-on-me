@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { RefreshControl, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
-import type { ActivityItem, ChallengeView, FeedView, FriendsView, UserSummary } from '../../../../lib/types';
+import type { ActivityItem, ChallengeView, FeedView, FriendsView, NotificationView, UserSummary } from '../../../../lib/types';
 import { ChallengeCard } from '@/components/ChallengeCard';
 import { Avatar, CategoryMark, RatingBadge, Squish, useConfirm, useToast } from '@/components/fx';
 import { Butterfingers } from '@/components/Butterfingers';
@@ -83,6 +83,7 @@ export default function Friends() {
   const [tab, setTab] = useState<Tab>('live');
   const [friends, setFriends] = useState<FriendsView | null>(null);
   const [feed, setFeed] = useState<FeedView | null>(null);
+  const [notes, setNotes] = useState<NotificationView[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState('');
@@ -91,9 +92,10 @@ export default function Friends() {
 
   const load = useCallback(async () => {
     try {
-      const [f, fd] = await Promise.all([api<FriendsView>('/friends'), api<FeedView>('/friends/feed')]);
+      const [f, fd, n] = await Promise.all([api<FriendsView>('/friends'), api<FeedView>('/friends/feed'), api<NotificationView[]>('/notifications').catch(() => null)]);
       setFriends(f);
       setFeed(fd);
+      if (n) setNotes(n);
       setError(null);
     } catch (e) {
       setError(errorMessage(e));
@@ -169,7 +171,20 @@ export default function Friends() {
     return <Button small icon="account-plus" title="Add" loading={busy === `add${u.username}`} onPress={() => void add(u)} />;
   };
 
-  const requestsCount = (friends?.incoming.length ?? 0) + (friends?.invites.length ?? 0);
+  const unseenNotes = notes.filter((n) => !n.seen).length;
+  const requestsCount = (friends?.incoming.length ?? 0) + (friends?.invites.length ?? 0) + unseenNotes;
+  const openTab = (t: Tab) => {
+    setTab(t);
+    // Opening the inbox marks mentions, replies and nudges as seen (they stay listed).
+    if (t === 'requests' && unseenNotes > 0) {
+      void api('/notifications/read', { method: 'POST' })
+        .then(() => {
+          setNotes((list) => list.map((n) => ({ ...n, seen: true })));
+          void refresh();
+        })
+        .catch(() => {});
+    }
+  };
 
   return (
     <Screen
@@ -214,7 +229,7 @@ export default function Friends() {
 
       <Segmented
         value={tab}
-        onChange={setTab}
+        onChange={openTab}
         options={[
           { value: 'live', label: 'Live' },
           { value: 'friends', label: `Friends${friends ? ` ${friends.friends.length}` : ''}` },
@@ -286,6 +301,33 @@ export default function Friends() {
         )
       ) : (
         <View style={{ gap: space.lg }}>
+          <View style={{ gap: 0 }}>
+            <Heading accessibilityRole="header" style={{ marginBottom: space.xs }}>
+              Mentions & nudges
+            </Heading>
+            {notes.length === 0 ? <Muted>When someone @mentions you, replies to you or nudges you in a challenge, it shows up here.</Muted> : null}
+            {notes.slice(0, 20).map((n) => {
+              const who = n.from.displayName || n.from.username;
+              const verb = n.kind === 'mention' ? 'mentioned you in' : n.kind === 'reply' ? 'replied to you in' : 'nudged you in';
+              return (
+                <Squish key={n.id} accessibilityLabel={`${who} ${verb} ${n.challengeTitle}`} onPress={() => router.push(`/challenge/${n.challengeId}`)} style={styles.note}>
+                  <Avatar username={n.from.username} avatar={n.from.avatar} size={36} />
+                  <View style={styles.flex}>
+                    <Body numberOfLines={2}>
+                      <BodyStrong>{who}</BodyStrong> {verb} <BodyStrong>{n.challengeTitle}</BodyStrong>
+                    </Body>
+                    {n.kind !== 'nudge' && n.text ? (
+                      <Muted numberOfLines={2}>“{n.text}”</Muted>
+                    ) : n.kind === 'nudge' ? (
+                      <Muted>Your move — they’re waiting on you.</Muted>
+                    ) : null}
+                    <Muted>{ago(n.at, now)}</Muted>
+                  </View>
+                  {!n.seen ? <View style={styles.unseen} accessibilityLabel="New" /> : null}
+                </Squish>
+              );
+            })}
+          </View>
           <View style={{ gap: space.sm }}>
             <Heading accessibilityRole="header">Challenge invites</Heading>
             {friends.invites.length === 0 ? <Muted>No invites right now. When a friend pulls you into a bet, it lands here.</Muted> : null}
@@ -363,6 +405,8 @@ function EmptySquad({ onAdd }: { onAdd: () => void }) {
 }
 
 const styles = StyleSheet.create({
+  note: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md, paddingVertical: space.sm + 2, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  unseen: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.attention, marginTop: 6 },
   flex: { flex: 1 },
   activity: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm + 2, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   kindDot: { position: 'absolute', right: -3, bottom: -3, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.surface },

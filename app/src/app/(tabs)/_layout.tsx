@@ -45,7 +45,7 @@ function TabItem({ name, focused, onPress, badge }: { name: string; focused: boo
 
 function TabBar({ state, navigateToTab, insets }: BottomTabBarProps) {
   const { me } = useAuth();
-  const squadBadge = (me?.pendingRequests ?? 0) + (me?.pendingInvites ?? 0);
+  const squadBadge = (me?.pendingRequests ?? 0) + (me?.pendingInvites ?? 0) + (me?.pendingNotifications ?? 0);
   const item = (name: string) => {
     const i = state.routes.findIndex((r) => r.name === name);
     if (i < 0) return null;
