@@ -1,4 +1,4 @@
-// Pure game rules: payout settlement + Clout points. No I/O, so it is unit-tested directly.
+// Pure game rules: payout settlement + XP points. No I/O, so it is unit-tested directly.
 import type { Category, Mode } from "./types";
 
 export const LAMPORTS_PER_SOL = 1_000_000_000;
@@ -9,7 +9,8 @@ export const SIGNUP_FUNDING_LAMPORTS = sol(2);
 export const ESCROW_TOPUP_LAMPORTS = sol(0.01);
 export const MAX_PARTICIPANTS = 20;
 
-// ---------- Points ("Clout") ----------
+// ---------- Points ("XP") ----------
+// In-app money is shown as coins: 1 coin = 0.001 test SOL (1,000,000 lamports).
 
 export const POINTS = { join: 10, complete: 50, win: 100, fail: -20 } as const;
 

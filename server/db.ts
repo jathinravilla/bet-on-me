@@ -22,6 +22,16 @@ export interface UserDoc {
   stravaOauth?: { nonce: string; returnTo: string; at: Date };
   dareCreditsUsedThisWeek: number;
   weekStart: Date;
+  displayName?: string;
+  bio?: string;
+  avatar?: { color: string; emoji?: string; image?: string };
+  friends?: string[]; // user ids (mutual)
+  friendReqIn?: string[];
+  friendReqOut?: string[];
+  invites?: { challengeId: string; fromId: string; at: Date }[];
+  integrationsWanted?: string[];
+  ratingSum?: number;
+  ratingCount?: number;
 }
 
 export interface ParticipantDoc {
@@ -70,6 +80,7 @@ export interface ChallengeDoc {
   upvotes: number;
   downvotes: number;
   reports: { userId: string; reason: string; at: Date }[];
+  ratings?: { from: string; stars: number; at: Date }[]; // players rate the challenge once it's settled (feeds the creator's rating)
   createdAt: Date;
 }
 
@@ -81,6 +92,7 @@ export interface DareProofDoc {
   livenessWord: string;
   wordIssuedAt: Date;
   uploadPath?: string;
+  localUploadKey?: string; // local dev only: sha256 of the one-time upload key
   videoUrl?: string;
   gemini?: { verdict: DareVerdict; reason: string; checkedAt: Date };
   voting: boolean;
@@ -129,6 +141,7 @@ export function cols(): Promise<Cols> {
       await Promise.all([
         c.users.createIndex({ username: 1 }, { unique: true }),
         c.users.createIndex({ sessions: 1 }),
+        c.users.createIndex({ friends: 1 }),
         c.users.createIndex({ "stravaOauth.nonce": 1 }, { sparse: true }),
         c.challenges.createIndex({ inviteCode: 1 }, { unique: true }),
         c.challenges.createIndex({ visibility: 1, status: 1, potLamports: -1 }),

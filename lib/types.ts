@@ -12,6 +12,7 @@ export type ProofStatus = "pending" | "approved" | "rejected";
 export interface ParticipantView {
   userId: string;
   username: string;
+  avatar?: Avatar;
   joinedAt: string;
   stakeTxSig: string;
   baseline?: number;
@@ -81,6 +82,10 @@ export interface ChallengeView {
   joined: boolean;
   myRank?: number;
   proofs?: ProofView[];
+  /** Players (not the creator) rate a settled challenge 1-5; it feeds the creator's profile rating. */
+  canRate: boolean;
+  myRating?: number;
+  rating: Rating;
 }
 
 export interface LimitsView {
@@ -101,9 +106,33 @@ export interface HistoryItem {
   settledAt: string;
 }
 
+export interface Avatar {
+  color: string; // hex, one of the preset swatches
+  emoji?: string;
+  image?: string; // small JPEG data URI (<= ~40KB)
+}
+
+export interface ProfileStats {
+  played: number;
+  wins: number;
+  completed: number;
+  netLamports: number;
+  live: number;
+}
+
 export interface MeView {
   id: string;
   username: string;
+  displayName?: string;
+  bio?: string;
+  avatar: Avatar;
+  rating: Rating;
+  stats: ProfileStats;
+  friendCount: number;
+  pendingRequests: number;
+  pendingRatings: number; // finished challenges you played in and haven't rated yet
+  pendingInvites: number;
+  integrationsWanted: string[];
   points: number;
   wallet: { publicKey: string; balanceLamports: number; funded: boolean };
   chessUsername?: string;
@@ -132,6 +161,7 @@ export interface CreateChallengeBody {
   dareText?: string;
   stakeLamports: number;
   durationMinutes: number;
+  inviteFriendIds?: string[];
 }
 
 export interface DareStartResponse {
@@ -151,4 +181,68 @@ export interface DareVerifyResponse {
   finalStatus: ProofStatus;
   voting: boolean;
   disputeEndsAt?: string;
+}
+
+/** Average stars players gave the challenges this person created. */
+export interface Rating {
+  avg: number; // 0 when nobody has rated them yet
+  count: number;
+}
+
+export interface UserSummary {
+  id: string;
+  username: string;
+  displayName?: string;
+  avatar: Avatar;
+  points: number; // XP
+  rating: Rating;
+  relation: "self" | "friend" | "incoming" | "outgoing" | "none";
+}
+
+export interface PublicProfile extends UserSummary {
+  bio?: string;
+  stats: ProfileStats;
+  friendCount: number;
+  challenges: ChallengeView[]; // their live challenges you are allowed to see
+}
+
+export interface FriendInvite {
+  challengeId: string;
+  title: string;
+  category: Category;
+  stakeLamports: number;
+  endsAt: string;
+  from: UserSummary;
+  at: string;
+}
+
+export interface FriendsView {
+  friends: UserSummary[];
+  incoming: UserSummary[];
+  outgoing: UserSummary[];
+  invites: FriendInvite[];
+}
+
+export type ActivityKind = "created" | "joined" | "completed" | "won" | "fumbled";
+
+export interface ActivityItem {
+  id: string;
+  kind: ActivityKind;
+  user: UserSummary;
+  challengeId: string;
+  title: string;
+  category: Category;
+  lamports?: number;
+  at: string;
+}
+
+export interface FeedView {
+  live: ChallengeView[]; // live challenges your friends are in (you can view and join these)
+  activity: ActivityItem[];
+}
+
+export interface UpdateProfileBody {
+  displayName?: string;
+  bio?: string;
+  avatar?: Avatar;
 }

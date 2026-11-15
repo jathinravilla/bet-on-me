@@ -20,7 +20,7 @@ import { colors } from '@/lib/theme';
 export type Mood = 'idle' | 'nervous' | 'celebrate' | 'fumble' | 'thinking';
 
 const INK = colors.ink;
-const BUTTER = colors.primary;
+const BUTTER = colors.butter;
 const LABELS: Record<Mood, string> = {
   idle: 'Butterfingers the butter mascot, holding a coin',
   nervous: 'Butterfingers, sweating nervously',
@@ -125,9 +125,9 @@ function Body({ mood }: { mood: Mood }) {
 
 const Coin = () => (
   <Svg viewBox="0 0 48 48" width="100%" height="100%">
-    <Circle cx={24} cy={24} r={20} fill="#F6B21B" stroke={INK} strokeWidth={4} />
-    <Circle cx={24} cy={24} r={13} fill="none" stroke="#FFE08A" strokeWidth={3} />
-    <Path d="M24 15 L26.6 21.4 L33 24 L26.6 26.6 L24 33 L21.4 26.6 L15 24 L21.4 21.4 Z" fill="#FFF3B0" />
+    <Circle cx={24} cy={24} r={20} fill="#BFE3F7" stroke={INK} strokeWidth={4} />
+    <Circle cx={24} cy={24} r={13} fill="none" stroke="#EAF7FF" strokeWidth={3} />
+    <Path d="M24 15 L26.6 21.4 L33 24 L26.6 26.6 L24 33 L21.4 26.6 L15 24 L21.4 21.4 Z" fill="#FFFFFF" />
   </Svg>
 );
 

@@ -2,15 +2,15 @@
 import { CameraView, useCameraPermissions, useMicrophonePermissions, type CameraType } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import * as Linking from 'expo-linking';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { DareStartResponse, DareVerifyResponse, UploadTokenResponse } from '../../../../lib/types';
-import { Butterfingers } from '@/components/Butterfingers';
-import { Banner, Body, Button, Display, Heading, IconButton, Label, Muted, ProgressBar, Screen, Title, TopBar } from '@/components/ui';
+import { Banner, Body, Button, Heading, Icon, IconButton, Label, Muted, ProgressBar, Screen, Title, TopBar } from '@/components/ui';
 import { api, errorMessage, uploadFile } from '@/lib/api';
+import { goBack } from '@/lib/nav';
 import { useAuth } from '@/lib/auth';
 import { timeLeft } from '@/lib/format';
 import { useNow } from '@/lib/useNow';
@@ -117,9 +117,9 @@ export default function DareRecorder() {
           </View>
           <View style={styles.wordCard} accessible accessibilityLabel={`Say the word ${proof.word} out loud in your video`}>
             <Label color={colors.onPrimary}>Say this word out loud</Label>
-            <Display color={colors.onPrimary} style={styles.word} adjustsFontSizeToFit numberOfLines={1}>
+            <Text style={styles.word} adjustsFontSizeToFit numberOfLines={1}>
               {proof.word}
-            </Display>
+            </Text>
           </View>
         </View>
 
@@ -142,8 +142,8 @@ export default function DareRecorder() {
     return (
       <Screen scroll={false}>
         <View style={styles.center} accessibilityLiveRegion="polite">
-          <Butterfingers mood="thinking" size={220} />
-          <Title center>{phase === 'uploading' ? 'Uploading your proof' : 'Butterfingers is checking your proof…'}</Title>
+          <ActivityIndicator color={colors.primary} />
+          <Title center>{phase === 'uploading' ? 'Uploading your proof' : 'Checking your proof'}</Title>
           <Body center color={colors.textMuted}>
             {phase === 'uploading' ? `${Math.round(upload * 100)}%` : 'Gemini is watching the video and listening for your word. This takes a few seconds.'}
           </Body>
@@ -161,12 +161,12 @@ export default function DareRecorder() {
     const pass = result.verdict === 'pass';
     const fail = result.finalStatus === 'rejected';
     return (
-      <Screen footer={<Button title={fail ? 'Back to challenge' : 'Done'} icon="check-bold" onPress={() => router.back()} />}>
+      <Screen footer={<Button title={fail ? 'Back to challenge' : 'Done'} onPress={() => goBack('/home')} />}>
         <View style={[styles.center, { paddingTop: space.xxl }]}>
-          <Butterfingers mood={pass ? 'celebrate' : fail ? 'fumble' : 'nervous'} size={210} />
-          <Display center color={pass ? colors.success : fail ? colors.danger : colors.warn}>
-            {pass ? 'Pass' : result.verdict === 'fail' ? 'Fail' : 'Unsure'}
-          </Display>
+          <View style={[styles.resultIcon, { backgroundColor: pass ? colors.successBg : fail ? colors.dangerBg : colors.primarySoft }]}>
+            <Icon name={pass ? 'check' : fail ? 'close' : 'help'} color={pass ? colors.success : fail ? colors.danger : colors.primary} size={28} />
+          </View>
+          <Title center>{pass ? 'Proof passed' : result.verdict === 'fail' ? 'Proof failed' : 'Needs a vote'}</Title>
           <Body center>{result.reason}</Body>
           {result.finalStatus === 'approved' ? <Banner tone="success" text="Dare complete. You're in line for the pot." /> : null}
           {result.finalStatus === 'pending' && result.voting ? <Banner tone="info" icon="vote" text="The AI wasn't sure, so the other players will vote on your proof." /> : null}
@@ -179,21 +179,20 @@ export default function DareRecorder() {
 
   return (
     <Screen footer={blocked ? <Button title="Open settings" icon="cog" onPress={() => void Linking.openSettings()} /> : <Button title={granted ? 'Get my word and record' : 'Allow camera and record'} icon="video" onPress={start} loading={busy} />}>
-      <TopBar title="Record proof" onBack={() => router.back()} />
+      <TopBar title="Record proof" onBack={() => goBack('/home')} />
       <View style={[styles.center, { paddingTop: space.lg }]}>
-        <Butterfingers mood={error ? 'nervous' : 'idle'} size={170} />
-        <Title center>Prove it</Title>
+        <Title center>Record your proof</Title>
       </View>
       {error ? <Banner text={error} /> : null}
       {blocked ? <Banner text="Camera or microphone access is off. Turn both on in Settings to record your proof." /> : null}
       <View style={{ gap: space.md }}>
         {[
-          ['numeric-1-circle', "You'll get a secret word. It's only valid for 5 minutes."],
-          ['numeric-2-circle', `Record up to ${MAX_SECONDS} seconds doing the dare, and say the word out loud.`],
-          ['numeric-3-circle', 'AI checks the video. Other players can dispute or vote.'],
-        ].map(([name, text]) => (
-          <View key={name} style={styles.step}>
-            <IconButton name={name as 'numeric-1-circle'} label="" color={colors.primary} onPress={() => {}} disabled />
+          ['1', "You'll get a secret word. It's only valid for 5 minutes."],
+          ['2', `Record up to ${MAX_SECONDS} seconds doing the dare, and say the word out loud.`],
+          ['3', 'AI checks the video. Other players can dispute or vote.'],
+        ].map(([n, text]) => (
+          <View key={n} style={styles.step}>
+            <Text style={styles.stepNum}>{n}</Text>
             <Body style={{ flex: 1 }}>{text}</Body>
           </View>
         ))}
@@ -209,12 +208,14 @@ const styles = StyleSheet.create({
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   timer: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   recDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.danger },
-  wordCard: { backgroundColor: colors.primary, borderRadius: radius.lg, paddingVertical: space.md, paddingHorizontal: space.lg, alignItems: 'center', borderBottomWidth: 5, borderBottomColor: colors.primaryDeep },
-  word: { fontFamily: fonts.display, fontSize: 64, lineHeight: 68, letterSpacing: 2 },
+  wordCard: { backgroundColor: colors.primary, borderRadius: radius.lg, paddingVertical: space.md, paddingHorizontal: space.lg, alignItems: 'center' },
+  word: { fontFamily: fonts.display, fontSize: 48, lineHeight: 56, letterSpacing: -1, color: colors.onPrimary },
+  resultIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
+  stepNum: { width: 24, height: 24, borderRadius: 12, textAlign: 'center', lineHeight: 24, overflow: 'hidden', backgroundColor: colors.surfaceHi, fontFamily: fonts.bodySemi, fontSize: 12, color: colors.text },
   overlayBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: space.xl, paddingTop: space.lg, gap: space.lg, alignItems: 'stretch', backgroundColor: colors.scrim },
   shutter: { alignSelf: 'center', width: 84, height: 84, borderRadius: 42, borderWidth: 5, borderColor: colors.text, alignItems: 'center', justifyContent: 'center' },
   shutterInner: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.danger },
   shutterStop: { width: 34, height: 34, borderRadius: 8 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.lg },
-  step: { flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.border, paddingRight: space.lg },
+  step: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md, paddingVertical: space.sm },
 });

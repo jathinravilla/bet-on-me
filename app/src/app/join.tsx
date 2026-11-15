@@ -3,9 +3,9 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import type { ChallengeView } from '../../../lib/types';
-import { Butterfingers } from '@/components/Butterfingers';
 import { Body, Button, Field, Screen, Title, TopBar } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
+import { goBack } from '@/lib/nav';
 import { useAuth } from '@/lib/auth';
 import { colors, fonts, space } from '@/lib/theme';
 
@@ -30,14 +30,11 @@ export default function Join() {
   };
 
   return (
-    <Screen footer={<Button title="Join and stake" icon="hand-coin" onPress={submit} loading={busy} disabled={code.length !== 6} />}>
-      <TopBar title="Join a challenge" onBack={() => router.back()} />
-      <View style={{ alignItems: 'center', gap: space.md, paddingTop: space.lg }}>
-        <Butterfingers mood={error ? 'nervous' : 'idle'} size={150} />
-        <Title center>Got a code?</Title>
-        <Body center color={colors.textMuted}>
-          Enter the 6-character code your friend shared. Your stake moves into the pot as soon as you join.
-        </Body>
+    <Screen footer={<Button title="Join and stake" onPress={submit} loading={busy} disabled={code.length !== 6} />}>
+      <TopBar title="Join a challenge" onBack={() => goBack('/home')} />
+      <View style={{ gap: space.xs, paddingTop: space.md }}>
+        <Title>Enter invite code</Title>
+        <Body color={colors.textMuted}>The 6-character code your friend shared. Your stake moves into the pot as soon as you join.</Body>
       </View>
       <Field
         label="Invite code"
@@ -53,7 +50,7 @@ export default function Join() {
         returnKeyType="go"
         onSubmitEditing={() => code.length === 6 && void submit()}
         error={error}
-        style={{ fontFamily: fonts.display, fontSize: 34, letterSpacing: 8, textAlign: 'center', minHeight: 76 }}
+        style={{ fontFamily: fonts.bodySemi, fontSize: 28, letterSpacing: 10, textAlign: 'center', minHeight: 64 }}
       />
     </Screen>
   );

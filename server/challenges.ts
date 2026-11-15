@@ -35,12 +35,27 @@ export async function addPoints(userId: string, delta: number) {
 
 // ---------- views ----------
 
+function ratingSummary(r: ChallengeDoc["ratings"]) {
+  const count = r?.length ?? 0;
+  return { avg: count ? Math.round((r!.reduce((s, x) => s + x.stars, 0) / count) * 10) / 10 : 0, count };
+}
+
+/** Custom avatars (photo / emoji / colour) for a set of players; players without one fall back to a colour on the client. */
+async function participantAvatars(ids: string[]) {
+  const valid = ids.filter((id) => /^[a-f0-9]{24}$/.test(id));
+  if (valid.length === 0) return new Map<string, NonNullable<UserDoc["avatar"]>>();
+  const { users } = await cols();
+  const list = await users.find({ _id: { $in: valid.map((id) => new ObjectId(id)) }, avatar: { $exists: true } }, { projection: { avatar: 1 } }).toArray();
+  return new Map(list.map((u) => [u._id.toHexString(), u.avatar!]));
+}
+
 export async function toView(ch: ChallengeDoc, me: UserDoc, withProofs = false): Promise<ChallengeView> {
   const uid = me._id.toHexString();
   const board = leaderboard(ch);
   const joined = board.some((p) => p.userId === uid);
   const rank = board.findIndex((p) => p.userId === uid);
   const names = new Map(ch.participants.map((p) => [p.userId, p.username]));
+  const avatars = await participantAvatars(board.map((p) => p.userId));
   const view: ChallengeView = {
     id: ch._id.toHexString(),
     title: ch.title,
@@ -63,6 +78,7 @@ export async function toView(ch: ChallengeDoc, me: UserDoc, withProofs = false):
     participants: board.map((p) => ({
       userId: p.userId,
       username: p.username,
+      avatar: avatars.get(p.userId),
       joinedAt: p.joinedAt.toISOString(),
       stakeTxSig: p.stakeTxSig,
       baseline: p.baseline,
@@ -84,6 +100,9 @@ export async function toView(ch: ChallengeDoc, me: UserDoc, withProofs = false):
     iReported: ch.reports.some((r) => r.userId === uid),
     joined,
     myRank: rank >= 0 ? rank + 1 : undefined,
+    canRate: joined && ch.status === "settled" && ch.creatorId !== uid,
+    myRating: (ch.ratings ?? []).find((r) => r.from === uid)?.stars,
+    rating: ratingSummary(ch.ratings),
   };
 
   if (withProofs && ch.category === "dare") {

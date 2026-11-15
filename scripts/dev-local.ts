@@ -18,7 +18,7 @@ async function main() {
     if (/^http:\/\/localhost:\d+$/.test(origin)) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Access-Control-Allow-Headers", "authorization, content-type");
-      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
     }
     if (req.method === "OPTIONS") {
       res.statusCode = 204;

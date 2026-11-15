@@ -37,7 +37,8 @@ export async function handle(req: IncomingMessage, res: ServerResponse) {
     }
     ctx.body = await readJson(req);
 
-    const out = (await m.route.handler(ctx)) as { __redirect?: string; __html?: string } | undefined;
+    const out = (await m.route.handler(ctx)) as { __redirect?: string; __html?: string; __handled?: boolean } | undefined;
+    if (out?.__handled) return; // the handler already wrote the response (e.g. a video file)
     if (out && typeof out.__redirect === "string") {
       res.statusCode = 302;
       res.setHeader("Location", out.__redirect);

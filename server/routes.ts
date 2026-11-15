@@ -29,20 +29,43 @@ import { cols, rateLimit, type ChallengeDoc, type DareProofDoc, type UserDoc } f
 import { DEMO_MODE, MAX_USERS, SOLANA_MOCK, STRAVA_DEMO, need } from "./env";
 import { CHESS_USERNAME, chessPlayerExists, chessRating, stravaAuthorizeUrl, stravaExchange } from "./external";
 import { judgeDareVideo, screenDare } from "./gemini";
+import { LOCAL_MEDIA, localUpload, localVideoPath, originOf, readLocalVideo, serveLocalVideo } from "./localmedia";
 import { HttpError, num, objectIdStr, oneOf, optStr, str, type Ctx, type Route } from "./http";
+import {
+  avatarOf,
+  canSeeFriendsChallenge,
+  clearInvite,
+  dismissInvite,
+  friendsFeed,
+  inviteToChallenge,
+  listFriends,
+  pendingRatings,
+  publicProfile,
+  rateChallenge,
+  ratingOf,
+  removeFriend,
+  requestFriend,
+  respondFriend,
+  searchUsers,
+  sendInvites,
+  statsFor,
+  toggleIntegrationInterest,
+  updateProfile,
+} from "./social";
 
 const WEEK_MS = 7 * 24 * 3600 * 1000;
 const WORD_TTL_MS = 5 * 60 * 1000;
 const VERIFY_GRACE_MS = 5 * 60 * 1000; // extra time to upload after recording
 const MAX_VIDEO_BYTES = 18 * 1024 * 1024;
 const BLOB_API_VERSION = "13"; // matches the installed @vercel/blob
-const DURATIONS = [1440, 4320, 10080];
+const DURATIONS = [1440, 2880, 4320, 10080, 20160, 43200]; // 1d, 2d, 3d, 1w, 2w, 30d
 const REPORTS_TO_BAN = 3;
 const DOWNVOTE_MARGIN_TO_BAN = 5;
 const disputeWindowMs = () => (DEMO_MODE() ? 10_000 : 2 * 3600 * 1000);
 const signupLamports = () => (process.env.SIGNUP_FUNDING_SOL ? Math.round(Number(process.env.SIGNUP_FUNDING_SOL) * LAMPORTS_PER_SOL) : SIGNUP_FUNDING_LAMPORTS);
 
 const uidOf = (u: UserDoc) => u._id.toHexString();
+const COIN = 1_000_000; // lamports per in-app coin (1 coin = 0.001 test SOL)
 
 // ---------- users ----------
 
@@ -74,7 +97,7 @@ async function meView(userId: ObjectId): Promise<MeView> {
   const user = await users.findOne({ _id: userId });
   if (!user) throw new HttpError(401, "Please log in again.");
   const uid = uidOf(user);
-  const [bal, settled, used] = await Promise.all([
+  const [bal, settled, used, stats, toRate] = await Promise.all([
     balance(user.wallet.publicKey).catch(() => -1),
     challenges
       .find({ status: "settled", "participants.userId": uid })
@@ -82,7 +105,17 @@ async function meView(userId: ObjectId): Promise<MeView> {
       .limit(20)
       .toArray(),
     weekCredits(user),
+    statsFor(uidOf(user)),
+    pendingRatings(user),
   ]);
+  const liveInvites = (user.invites ?? []).length
+    ? await challenges.countDocuments({
+        _id: { $in: (user.invites ?? []).map((i) => new ObjectId(i.challengeId)) },
+        status: "active",
+        endsAt: { $gt: new Date() },
+        "participants.userId": { $ne: uid },
+      })
+    : 0;
   const { current, next } = tierFor(user.points);
   const history: HistoryItem[] = settled.map((c) => ({
     challengeId: c._id.toHexString(),
@@ -97,6 +130,16 @@ async function meView(userId: ObjectId): Promise<MeView> {
   return {
     id: uid,
     username: user.username,
+    displayName: user.displayName,
+    bio: user.bio,
+    avatar: avatarOf(user),
+    rating: ratingOf(user),
+    pendingRatings: toRate,
+    stats,
+    friendCount: user.friends?.length ?? 0,
+    pendingRequests: user.friendReqIn?.length ?? 0,
+    pendingInvites: liveInvites,
+    integrationsWanted: user.integrationsWanted ?? [],
     points: user.points,
     wallet: { publicKey: user.wallet.publicKey, balanceLamports: bal, funded: user.fundState === "done" },
     chessUsername: user.chessUsername,
@@ -236,12 +279,12 @@ async function createChallenge(ctx: Ctx) {
   const title = str(b.title, "Title", 3, 60);
   const description = optStr(b.description, "Description", 280);
   const stakeLamports = num(b.stakeLamports, "Stake", MIN_STAKE_LAMPORTS, 100 * LAMPORTS_PER_SOL, true);
-  const durationMinutes = num(b.durationMinutes, "Duration", 1, 10080, true);
+  const durationMinutes = num(b.durationMinutes, "Duration", 1, 43200, true);
   if (!DURATIONS.includes(durationMinutes) && !(DEMO_MODE() && durationMinutes === 5)) throw new HttpError(400, "Pick one of the listed durations.");
 
   const { current } = tierFor(user.points);
   if (stakeLamports > current.maxStakeLamports) {
-    throw new HttpError(403, `Your max stake is ${current.maxStakeLamports / LAMPORTS_PER_SOL} SOL. Earn more Clout to raise it.`);
+    throw new HttpError(403, `Your max stake is ${current.maxStakeLamports / COIN} coins. Earn XP to raise it.`);
   }
 
   let target: number | undefined;
@@ -260,13 +303,13 @@ async function createChallenge(ctx: Ctx) {
   } else {
     dareText = str(b.dareText, "Dare", 10, 200);
     if (visibility === "public" && (await weekCredits(user)) >= current.publicDaresPerWeek) {
-      throw new HttpError(403, `You've used your ${current.publicDaresPerWeek} public dare(s) this week. Earn Clout to unlock more.`);
+      throw new HttpError(403, `You've used your ${current.publicDaresPerWeek} public dare(s) this week. Earn XP to unlock more.`);
     }
     const screen = await screenDare(`${title}. ${dareText}`);
     if (!screen.allowed) throw new HttpError(422, `Dare blocked: ${screen.reason}`);
   }
 
-  if ((await balance(user.wallet.publicKey)) < stakeLamports) throw new HttpError(400, "Not enough SOL in your wallet for that stake.");
+  if ((await balance(user.wallet.publicKey)) < stakeLamports) throw new HttpError(400, "Not enough coins in your wallet for that stake.");
 
   const { challenges, users } = await cols();
   const escrow = newWallet().doc;
@@ -341,7 +384,9 @@ async function createChallenge(ctx: Ctx) {
   );
   if (category === "dare" && visibility === "public") await users.updateOne({ _id: user._id }, { $inc: { dareCreditsUsedThisWeek: 1 } });
   await addPoints(uid, POINTS.join);
-  return toView(await getChallenge(doc._id.toHexString()), user, true);
+  const created = await getChallenge(doc._id.toHexString());
+  await sendInvites(created, user, b.inviteFriendIds).catch((e) => console.error("invite failed:", e instanceof Error ? e.message : e));
+  return toView(created, user, true);
 }
 
 async function listPublic(ctx: Ctx) {
@@ -370,10 +415,10 @@ async function listMine(ctx: Ctx) {
   return Promise.all(list.map((c) => toView(c, ctx.user)));
 }
 
-/** Friends challenges are private: only players (and the creator) can open them. */
+/** Friends challenges are private: players, the creator, invitees and friends of players can open them. */
 function assertCanView(ch: ChallengeDoc, user: UserDoc) {
   const uid = uidOf(user);
-  if (ch.visibility === "friends" && !isParticipant(ch, uid) && ch.creatorId !== uid) throw new HttpError(404, "Challenge not found.");
+  if (ch.visibility === "friends" && !canSeeFriendsChallenge(ch, user)) throw new HttpError(404, "Challenge not found.");
   if (ch.status === "banned" && !isParticipant(ch, uid)) throw new HttpError(404, "Challenge not found.");
 }
 
@@ -403,7 +448,7 @@ async function join(ctx: Ctx) {
     if (!ch) throw new HttpError(404, "No challenge with that code. Double-check it with your friend.");
   } else {
     ch = await getChallenge(objectIdStr(ctx.body.challengeId, "Challenge id"));
-    if (ch.visibility !== "public") throw new HttpError(403, "This is a friends challenge — join with its invite code.");
+    if (ch.visibility !== "public" && !canSeeFriendsChallenge(ch, user)) throw new HttpError(403, "This is a friends challenge — join with its invite code.");
   }
   if (ch.status !== "active" || ch.endsAt.getTime() <= Date.now()) throw new HttpError(409, "This challenge has already ended.");
   if (isParticipant(ch, uid)) throw new HttpError(409, "You're already in this challenge.");
@@ -416,7 +461,7 @@ async function join(ctx: Ctx) {
     if (rating === null) throw new HttpError(400, `You don't have a ${ch.chessTimeControl ?? "rapid"} rating on chess.com yet — play a rated game first.`);
     baseline = rating;
   }
-  if ((await balance(user.wallet.publicKey)) < ch.stakeLamports) throw new HttpError(400, "Not enough SOL in your wallet for this stake.");
+  if ((await balance(user.wallet.publicKey)) < ch.stakeLamports) throw new HttpError(400, "Not enough coins in your wallet for this stake.");
 
   // Reserve the seat first (atomic, so a double-tap can't join twice), then move the money.
   const reserved = await challenges.updateOne(
@@ -457,6 +502,7 @@ async function join(ctx: Ctx) {
     throw new HttpError(409, "This challenge ended just as you joined — your stake was returned.");
   }
   await addPoints(uid, POINTS.join);
+  await clearInvite(user._id, ch._id.toHexString());
   return toView(await getChallenge(ch._id.toHexString()), user, true);
 }
 
@@ -587,6 +633,13 @@ async function dareUploadToken(ctx: Ctx): Promise<UploadTokenResponse> {
   if (Date.now() - proof.wordIssuedAt.getTime() > WORD_TTL_MS + VERIFY_GRACE_MS) throw new HttpError(410, "That liveness word expired. Tap Record proof again.");
   const ext = oneOf(ctx.body.ext ?? "mov", "File type", ["mov", "mp4"] as const);
   const contentType = ext === "mov" ? "video/quicktime" : "video/mp4";
+  if (LOCAL_MEDIA()) {
+    // Local dev without Vercel Blob: upload straight to this server with a one-time key.
+    const key = randomToken(24);
+    const { proofs } = await cols();
+    await proofs.updateOne({ _id: proof._id }, { $set: { uploadPath: `local/${proof._id.toHexString()}.${ext}`, localUploadKey: sha256(key) } });
+    return { uploadUrl: `${originOf(ctx)}/api/dare/local-upload/${proof._id.toHexString()}?k=${key}`, headers: { "content-type": contentType } };
+  }
   const pathname = `dares/${proof._id.toHexString()}-${randomToken(9)}.${ext}`;
   // A one-shot upload ticket: this exact file name, video only, small, valid for 10 minutes.
   const clientToken = await generateClientTokenFromReadWriteToken({
@@ -627,12 +680,20 @@ async function dareVerify(ctx: Ctx): Promise<DareVerifyResponse> {
   } catch {
     throw new HttpError(400, "Invalid video URL.");
   }
-  if (url.protocol !== "https:" || !url.hostname.endsWith(".public.blob.vercel-storage.com") || decodeURIComponent(url.pathname) !== `/${proof.uploadPath}` || url.search || url.username) {
-    throw new HttpError(400, "Invalid video URL.");
+  let video: Buffer;
+  if (LOCAL_MEDIA() && proof.uploadPath.startsWith("local/")) {
+    // Local file: the URL must point at exactly this proof's file; we read it from disk, never fetch it.
+    const ext = proof.uploadPath.endsWith(".mov") ? "mov" : "mp4";
+    if (url.pathname !== localVideoPath(proof._id.toHexString(), ext) || url.search || url.username) throw new HttpError(400, "Invalid video URL.");
+    video = await readLocalVideo(proof._id.toHexString(), ext);
+  } else {
+    if (url.protocol !== "https:" || !url.hostname.endsWith(".public.blob.vercel-storage.com") || decodeURIComponent(url.pathname) !== `/${proof.uploadPath}` || url.search || url.username) {
+      throw new HttpError(400, "Invalid video URL.");
+    }
+    const res = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) throw new HttpError(400, "Couldn't read the uploaded video. Try recording again.");
+    video = Buffer.from(await res.arrayBuffer());
   }
-  const res = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(20_000) });
-  if (!res.ok) throw new HttpError(400, "Couldn't read the uploaded video. Try recording again.");
-  const video = Buffer.from(await res.arrayBuffer());
   if (video.length === 0 || video.length > MAX_VIDEO_BYTES) throw new HttpError(400, "That video is too large. Keep it under 15 seconds.");
 
   const { proofs } = await cols();
@@ -751,6 +812,18 @@ export const routes: Route[] = [
   { method: "POST", pattern: "/auth/logout", auth: true, handler: logout },
   { method: "GET", pattern: "/me", auth: true, handler: me },
   { method: "POST", pattern: "/me/chess", auth: true, handler: setChess },
+  { method: "POST", pattern: "/me/profile", auth: true, handler: async (ctx) => (await updateProfile(ctx), meView(ctx.user._id)) },
+  { method: "POST", pattern: "/me/integrations", auth: true, handler: async (ctx) => (await toggleIntegrationInterest(ctx), meView(ctx.user._id)) },
+  { method: "GET", pattern: "/users/search", auth: true, handler: searchUsers },
+  { method: "GET", pattern: "/users/:username", auth: true, handler: publicProfile },
+  { method: "GET", pattern: "/friends", auth: true, handler: listFriends },
+  { method: "GET", pattern: "/friends/feed", auth: true, handler: friendsFeed },
+  { method: "POST", pattern: "/friends/request", auth: true, handler: requestFriend },
+  { method: "POST", pattern: "/friends/respond", auth: true, handler: respondFriend },
+  { method: "POST", pattern: "/friends/remove", auth: true, handler: removeFriend },
+  { method: "POST", pattern: "/friends/invites/dismiss", auth: true, handler: dismissInvite },
+  { method: "POST", pattern: "/challenges/:id/invite", auth: true, handler: inviteToChallenge },
+  { method: "POST", pattern: "/challenges/:id/rate", auth: true, handler: rateChallenge },
   { method: "GET", pattern: "/strava/connect", auth: true, handler: stravaConnect },
   { method: "POST", pattern: "/strava/demo-run", auth: true, handler: stravaDemoRun },
   { method: "GET", pattern: "/strava/callback", auth: false, handler: stravaCallback },
@@ -768,6 +841,8 @@ export const routes: Route[] = [
   { method: "POST", pattern: "/dare/start", auth: true, handler: dareStart },
   { method: "POST", pattern: "/dare/upload-token", auth: true, handler: dareUploadToken },
   { method: "POST", pattern: "/dare/verify", auth: true, handler: dareVerify },
+  { method: "PUT", pattern: "/dare/local-upload/:proofId", auth: false, handler: localUpload },
+  { method: "GET", pattern: "/dare/local-video/:file", auth: false, handler: serveLocalVideo },
   { method: "POST", pattern: "/dare/:proofId/dispute", auth: true, handler: dareDispute },
   { method: "POST", pattern: "/dare/:proofId/vote", auth: true, handler: dareVote },
   { method: "GET", pattern: "/cron/settle-due", auth: false, handler: cronSettleDue },
