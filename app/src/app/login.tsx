@@ -11,7 +11,7 @@ import { useAuth } from '@/lib/auth';
 import { colors, fonts, gradients, radius, space } from '@/lib/theme';
 
 const POINTS = [
-  { icon: 'shield-check-outline', text: 'Proof is verified automatically — Strava, chess.com, or video.' },
+  { icon: 'shield-check-outline', text: 'Proof is verified automatically — runs, chess, GitHub, Duolingo, or video.' },
   { icon: 'account-multiple-outline', text: 'Stake coins against friends or open it up to anyone.' },
   { icon: 'scale-balance', text: 'Winners are paid out on-chain the moment it settles.' },
 ] as const;

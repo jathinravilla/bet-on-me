@@ -395,7 +395,7 @@ export default function ChallengeDetail() {
             {c.category === 'strava' && !me.stravaConnected ? (
               <Button
                 small
-                title={me.stravaDemo ? 'Connect demo Strava' : 'Connect Strava'}
+                title="Connect Strava"
                 loading={busy === 'connect'}
                 style={styles.flex}
                 onPress={() =>
