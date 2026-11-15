@@ -522,9 +522,9 @@ export default function ChallengeDetail() {
             <Button
               small
               variant="secondary"
-              title={c.category === 'strava' ? 'Simulate +2 miles' : 'Simulate +25 rating'}
+              title={c.category === 'strava' ? 'Simulate +2 miles' : c.category === 'github' ? 'Simulate +3 contributions' : c.category === 'duolingo' ? 'Simulate +50 XP' : 'Simulate +25 rating'}
               loading={busy === 'sim'}
-              onPress={() => void act('sim', () => api<ChallengeView>('/demo/simulate-progress', { body: { challengeId: c.id, amount: c.category === 'strava' ? 2 : 25 } }))}
+              onPress={() => void act('sim', () => api<ChallengeView>('/demo/simulate-progress', { body: { challengeId: c.id, amount: c.category === 'strava' ? 2 : c.category === 'github' ? 3 : c.category === 'duolingo' ? 50 : 25 } }))}
             />
           ) : null}
           <Button

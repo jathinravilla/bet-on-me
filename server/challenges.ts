@@ -176,11 +176,11 @@ export async function syncChallenge(ch: ChallengeDoc, opts: { onlyUserId?: strin
       if (ch.category === "github" || ch.category === "duolingo") {
         const gained =
           ch.category === "github"
-            ? user.githubUsername
-              ? await githubContributionsSince(user.githubUsername, p.windowStart ?? githubWindowStart(p.joinedAt))
+            ? (p.source ?? user.githubUsername)
+              ? await githubContributionsSince((p.source ?? user.githubUsername)!, p.windowStart ?? githubWindowStart(p.joinedAt))
               : null
-            : user.duolingoUsername
-              ? await duolingoXp(user.duolingoUsername)
+            : (p.source ?? user.duolingoUsername)
+              ? await duolingoXp((p.source ?? user.duolingoUsername)!)
               : null;
         if (gained === null || p.baseline === undefined) return void (await markTried());
         progress = Math.max(0, gained - p.baseline) + bonus;

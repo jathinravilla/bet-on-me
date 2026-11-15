@@ -76,6 +76,7 @@ export interface ParticipantDoc {
   stakeTxSig: string; // "pending" while the stake transfer is in flight
   baseline?: number;
   windowStart?: string; // GitHub: first day (YYYY-MM-DD) counted toward this player
+  source?: string; // GitHub / Duolingo username the baseline was read from; progress is always read from this one
   progress: number;
   completed: boolean;
   lastSyncedAt?: Date;

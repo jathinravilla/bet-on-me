@@ -247,7 +247,7 @@ async function setDuolingo(ctx: Ctx) {
  * A player's starting point for "gained since joining" challenges. A failed read is never treated as 0:
  * that would count a player's whole history as progress, so the create/join is refused instead.
  */
-async function startingPoint(category: ChallengeDoc["category"], user: UserDoc, chessTimeControl?: ChallengeDoc["chessTimeControl"]): Promise<{ baseline?: number; windowStart?: string }> {
+async function startingPoint(category: ChallengeDoc["category"], user: UserDoc, chessTimeControl?: ChallengeDoc["chessTimeControl"]): Promise<{ baseline?: number; windowStart?: string; source?: string }> {
   if (category === "chess") {
     if (!user.chessUsername) throw new HttpError(400, "Set your chess.com username on your profile first.");
     const rating = await chessRating(user.chessUsername, chessTimeControl ?? "rapid");
@@ -259,13 +259,13 @@ async function startingPoint(category: ChallengeDoc["category"], user: UserDoc, 
     const windowStart = githubWindowStart(new Date());
     const so = await githubContributionsSince(user.githubUsername, windowStart);
     if (so === null) throw new HttpError(502, "Couldn't read your GitHub contributions right now. Try again in a moment.");
-    return { baseline: so, windowStart };
+    return { baseline: so, windowStart, source: user.githubUsername };
   }
   if (category === "duolingo") {
     if (!user.duolingoUsername) throw new HttpError(400, "Link your Duolingo username on your profile first.");
     const xp = await duolingoXp(user.duolingoUsername);
     if (xp === null) throw new HttpError(502, "Couldn't read your Duolingo XP right now. Try again in a moment.");
-    return { baseline: xp };
+    return { baseline: xp, source: user.duolingoUsername };
   }
   return {};
 }
@@ -349,6 +349,7 @@ async function createChallenge(ctx: Ctx) {
   let dareText: string | undefined;
   let baseline: number | undefined;
   let windowStart: string | undefined;
+  let source: string | undefined;
   if (category === "strava") {
     if (mode === "target") target = num(b.target, "Target miles", 0.1, 500);
   } else if (category === "chess") {
@@ -357,10 +358,10 @@ async function createChallenge(ctx: Ctx) {
     ({ baseline } = await startingPoint("chess", user, chessTimeControl));
   } else if (category === "github") {
     if (mode === "target") target = num(b.target, "Target contributions", 1, 2000, true);
-    ({ baseline, windowStart } = await startingPoint("github", user));
+    ({ baseline, windowStart, source } = await startingPoint("github", user));
   } else if (category === "duolingo") {
     if (mode === "target") target = num(b.target, "Target XP", 10, 100000, true);
-    ({ baseline } = await startingPoint("duolingo", user));
+    ({ baseline, source } = await startingPoint("duolingo", user));
   } else {
     dareText = str(b.dareText, "Dare", 10, 200);
     if (visibility === "public" && (await weekCredits(user)) >= current.publicDaresPerWeek) {
@@ -437,6 +438,7 @@ async function createChallenge(ctx: Ctx) {
           stakeTxSig: sig,
           baseline,
           windowStart,
+          source,
           progress: category === "chess" && mode === "target" ? baseline ?? 0 : 0,
           completed: false,
         },
@@ -545,7 +547,7 @@ async function join(ctx: Ctx) {
   if (isParticipant(ch, uid)) throw new HttpError(409, "You're already in this challenge.");
   if (ch.participants.length >= MAX_PARTICIPANTS) throw new HttpError(409, "This challenge is full.");
 
-  const { baseline, windowStart } = await startingPoint(ch.category, user, ch.chessTimeControl);
+  const { baseline, windowStart, source } = await startingPoint(ch.category, user, ch.chessTimeControl);
   if ((await balance(user.wallet.publicKey)) < ch.stakeLamports) throw new HttpError(400, "Not enough coins in your wallet for this stake.");
 
   // Reserve the seat first (atomic, so a double-tap can't join twice), then move the money.
@@ -560,6 +562,7 @@ async function join(ctx: Ctx) {
           stakeTxSig: "pending",
           baseline,
           windowStart,
+          source,
           progress: ch.category === "chess" && ch.mode === "target" ? baseline ?? 0 : 0,
           completed: false,
         },
@@ -601,9 +604,14 @@ async function playerChallenge(ctx: Ctx): Promise<ChallengeDoc> {
 }
 
 async function sync(ctx: Ctx) {
-  await rateLimit(`sync:${uidOf(ctx.user)}`, 30, 60);
+  const uid = uidOf(ctx.user);
+  await rateLimit(`sync:${uid}`, 30, 60);
   const ch = await playerChallenge(ctx);
-  return toView(await settleIfDue(await syncChallenge(ch)), ctx.user, true);
+  // A tap on "Sync" always re-reads the caller's own numbers (polling may have just cached them).
+  // GitHub / Duolingo are public pages, so those taps get a tighter limit.
+  if (ch.category === "github" || ch.category === "duolingo") await rateLimit(`sync-ext:${uid}`, 6, 60);
+  const mine = await syncChallenge(ch, { onlyUserId: uid, force: true });
+  return toView(await settleIfDue(await syncChallenge(mine)), ctx.user, true);
 }
 
 async function publicChallenge(ctx: Ctx): Promise<ChallengeDoc> {

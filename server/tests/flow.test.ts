@@ -468,6 +468,15 @@ test("GitHub and Duolingo challenges count what you gain after joining", async (
     assert.equal(d2.participants[0].username, "gd_bo");
     assert.equal(d2.participants[0].progress, 300);
     assert.equal(d2.participants[1].progress, 120);
+
+    // Tapping Sync again right away re-reads your numbers (no stale cache).
+    fakes.duolingo.duo_bo += 40;
+    assert.equal((await call<ChallengeView>("POST", `/challenges/${duo.id}/sync`, b.token)).data.participants.find((p) => p.username === "gd_bo")!.progress, 340);
+
+    // Re-linking to a bigger account mid-bet changes nothing: progress is read from the account you joined with.
+    fakes.duolingo.duo_whale = 900_000;
+    await call("POST", "/me/duolingo", b.token, { username: "duo_whale" });
+    assert.equal((await call<ChallengeView>("POST", `/challenges/${duo.id}/sync`, b.token)).data.participants.find((p) => p.username === "gd_bo")!.progress, 340);
   } finally {
     delete (globalThis as { __betonmeFakes?: unknown }).__betonmeFakes;
   }
