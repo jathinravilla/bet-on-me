@@ -422,7 +422,7 @@ export default function ChallengeDetail() {
                 }
               />
             ) : (
-              <Button small title={c.category === 'strava' ? 'Sync runs' : c.category === 'github' ? 'Sync contributions' : c.category === 'duolingo' ? 'Sync XP' : 'Sync rating'} loading={busy === 'sync'} style={styles.flex} onPress={() => void act('sync', () => api<ChallengeView>(`/challenges/${c.id}/sync`, { method: 'POST' }))} />
+              <Button small title={c.category === 'strava' ? 'Sync runs' : c.category === 'github' ? 'Sync GitHub' : c.category === 'duolingo' ? 'Sync Duolingo' : 'Sync rating'} loading={busy === 'sync'} style={styles.flex} onPress={() => void act('sync', () => api<ChallengeView>(`/challenges/${c.id}/sync`, { method: 'POST' }))} />
             )}
             <Button small variant="secondary" title="Invite friends" style={styles.flex} onPress={() => void openInvite()} />
           </Row>
