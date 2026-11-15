@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
@@ -10,10 +10,14 @@ import { useAuth } from '@/lib/auth';
 import { colors, fonts, space } from '@/lib/theme';
 
 export default function Join() {
-  const { refresh } = useAuth();
-  const [code, setCode] = useState('');
+  const { me, refresh } = useAuth();
+  const { code: shared } = useLocalSearchParams<{ code?: string }>();
+  const clean = (t: string) => t.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 6);
+  const [code, setCode] = useState(clean(shared ?? ''));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  if (!me) return <Redirect href={`/login?next=${encodeURIComponent(`/join?code=${clean(shared ?? '')}`)}`} />;
 
   const submit = async () => {
     setBusy(true);
@@ -40,7 +44,7 @@ export default function Join() {
         label="Invite code"
         value={code}
         onChangeText={(t) => {
-          setCode(t.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 6));
+          setCode(clean(t));
           setError(null);
         }}
         placeholder="ABC234"

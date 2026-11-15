@@ -341,7 +341,7 @@ export default function ChallengeDetail() {
                 toast('Invite code copied', 'success', 'content-copy');
               }}
             />
-            <IconButton name="share-variant-outline" label="Share invite code" color={colors.textMuted} onPress={async () => (await shareText(`Join "${c.title}" on Bet On Me with code ${c.inviteCode} (${coins(c.stakeLamports)}-coin stake).`)) === 'copied' && toast('Copied — paste it anywhere', 'success', 'content-copy')} />
+            <IconButton name="share-variant-outline" label="Share invite code" color={colors.textMuted} onPress={async () => (await shareText(`Join "${c.title}" on Bet On Me with code ${c.inviteCode} (${coins(c.stakeLamports)}-coin stake): ${WEB_URL}/join?code=${c.inviteCode}`)) === 'copied' && toast('Copied — paste it anywhere', 'success', 'content-copy')} />
           </Row>
         ) : null}
       </Card>

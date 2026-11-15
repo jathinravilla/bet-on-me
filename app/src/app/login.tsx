@@ -1,4 +1,4 @@
-import { Redirect } from 'expo-router';
+import { Redirect, useLocalSearchParams, type Href } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
@@ -18,10 +18,11 @@ const POINTS = [
 
 export default function Login() {
   const { me, login } = useAuth();
+  const { next } = useLocalSearchParams<{ next?: string }>();
   const [username, setUsername] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  if (me) return <Redirect href="/home" />;
+  if (me) return <Redirect href={(typeof next === 'string' && /^\/(join|challenge)/.test(next) ? next : '/home') as Href} />;
 
   const clean = username.trim().toLowerCase();
   const submit = async () => {
@@ -78,7 +79,7 @@ export default function Login() {
             returnKeyType="go"
             onSubmitEditing={submit}
             error={error}
-            hint="No password needed. New accounts start with 2,000 test coins."
+            hint="No password needed. New accounts start with free test coins."
           />
           <Button title="Continue" onPress={submit} loading={busy} disabled={clean.length < 3} />
           <View style={{ alignItems: 'center' }}>

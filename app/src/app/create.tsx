@@ -13,7 +13,7 @@ import { Banner, Body, BodyStrong, Button, Card, Chip, Choice, Field, Heading, I
 import { api, errorMessage } from '@/lib/api';
 import { goBack } from '@/lib/nav';
 import { useAuth } from '@/lib/auth';
-import { shareText } from '@/lib/share';
+import { WEB_URL, shareText } from '@/lib/share';
 import { connectStrava, linkChess } from '@/lib/connect';
 import { coins, coinsToLamports } from '@/lib/format';
 import { UPCOMING } from '@/lib/integrations';
@@ -265,7 +265,7 @@ export default function Create() {
                   icon="share-variant"
                   title="Share"
                   style={styles.flex}
-                  onPress={async () => (await shareText(`Bet on yourself with me! Join "${created.title}" on Bet On Me with code ${created.inviteCode} (${coins(created.stakeLamports)}-coin stake).`)) === 'copied' && toast('Copied — paste it anywhere', 'success', 'content-copy')}
+                  onPress={async () => (await shareText(`Bet on yourself with me! Join "${created.title}" on Bet On Me with code ${created.inviteCode} (${coins(created.stakeLamports)}-coin stake): ${WEB_URL}/join?code=${created.inviteCode}`)) === 'copied' && toast('Copied — paste it anywhere', 'success', 'content-copy')}
                 />
               </Row>
             </Card>

@@ -17,18 +17,24 @@ Built at sunhacks 2026 by team Moneyball. Mascot: **Butterfingers**, a nervous s
 - **Target** challenges: everyone hits it → stakes returned; some hit it → they split the pot; nobody → leader takes it (dares refund).
 - **Open** challenges: most progress takes the pot; ties split; no progress → refund.
 - **Clout** points (+10 join, +50 complete, +100 win, −20 fail) unlock higher stakes and more public dares.
+- **On-chain receipts (Solana):** every settlement writes a fingerprint of the result into the payout transaction with the Memo program (`betonme:v1:<challenge>:<outcome>:<hash>`), so the winner list can't be quietly changed. The challenge screen links to it on Explorer.
+- **Coach Butterfingers (Gemini):** on the stake step, Gemini rates how doable the goal is (odds, verdict, tip). The stake suggestion is computed in code from the odds and the player's limits, never by the model. After a bet settles, Gemini also writes a one-line winner/loser comment for the share card.
+- **Search (MongoDB Atlas Search):** the Public tab searches public bets with typo tolerance, and public challenges show "Bets like this" using Atlas Search `moreLikeThis`. The index is created automatically; a plain text match covers the first minute while it builds.
+- **Share cards:** settled bets render a picture card (mascot, winner, pot, receipt) that shares as an image on phones. Invite links open the join screen with the code filled in, on the web version.
 - Dares are screened by Gemini against community guidelines; public challenges can be voted on and are removed + refunded after 3 reports.
 
 ## Tech
 
-Expo (SDK 58, expo-router, Reanimated, react-native-svg) · Node/TypeScript on Vercel serverless · MongoDB Atlas · Vercel Blob · Gemini (`@google/genai`) · `@solana/web3.js` on devnet.
+Expo (SDK 58, expo-router, Reanimated, react-native-svg) · Node/TypeScript on Vercel serverless · MongoDB Atlas (+ Atlas Search) · Vercel Blob · Gemini (`@google/genai`) · `@solana/web3.js` on devnet (+ Memo program).
+
+Anyone can try it without installing anything: **https://bet-on-me-web.vercel.app** (the same app, built for the web).
 
 ```
 /app      Expo app (screens in app/src/app)
 /api      Vercel entry point (one function serves every /api/* route)
 /server   Backend logic: routes, settlement, Solana, Gemini, Strava, chess.com
 /lib      Shared types + pure payout/points rules (unit tested)
-/scripts  Key generation, local no-keys dev server
+/scripts  Key generation, local dev server, staging server (real devnet + Gemini, throwaway DB), live checks, demo seeding
 ```
 
 ## Run it
