@@ -8,7 +8,9 @@
 
 [**Try it in your browser**](https://bet-on-me-web.vercel.app) · [**Watch the demo**](docs/demo.mp4)
 
-Built at **sunhacks 2026** by team **Moneyball**. Everything runs on Solana **devnet** with test coins, so no real money is involved.
+**Winner of Best Use of Solana (MLH) at sunhacks 2026**
+
+Built by team **Moneyball**. Everything runs on Solana **devnet** with test coins, so no real money is involved.
 
 </div>
 
